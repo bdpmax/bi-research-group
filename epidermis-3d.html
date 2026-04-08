@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Stratified Epidermis | Bi Research Group</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #fafaf8; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; }
+    #container { width: 100vw; height: 100vh; }
+    #info {
+      position: absolute; top: 24px; left: 24px;
+      color: #1a1a2e; max-width: 320px;
+    }
+    #info h1 {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 1.4rem; font-weight: 700; margin-bottom: 6px;
+    }
+    #info p { font-size: 0.82rem; color: #5a5a6e; line-height: 1.5; }
+    #legend {
+      position: absolute; bottom: 24px; left: 24px;
+      background: rgba(255,255,255,0.92); border: 1px solid #e8e8f0;
+      border-radius: 10px; padding: 16px 20px;
+      font-size: 0.78rem; color: #2d2d3a;
+    }
+    #legend h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #5a5a6e; margin-bottom: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; user-select: none; }
+    .legend-item:last-child { margin-bottom: 0; }
+    .legend-swatch {
+      width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+    .legend-item.hidden { opacity: 0.4; }
+    .legend-item.hidden .legend-swatch { background: #ccc !important; }
+    #loading {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 0.9rem; color: #5a5a6e;
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="container"></div>
+  <div id="legend">
+    <h3>Epidermal Layers</h3>
+    <div class="legend-item" data-layer="3"><span class="legend-swatch" style="background:#c8102e"></span> Stratum corneum</div>
+    <div class="legend-item" data-layer="2"><span class="legend-swatch" style="background:#e09f3e"></span> Stratum granulosum</div>
+    <div class="legend-item" data-layer="1"><span class="legend-swatch" style="background:#3a86c8"></span> Stratum spinosum</div>
+    <div class="legend-item" data-layer="0"><span class="legend-swatch" style="background:#2d6a4f"></span> Stratum basale</div>
+  </div>
+  <div id="loading">Computing cells&hellip;</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+    // ============================================================
+    // CONFIGURATION
+    // ============================================================
+    const BBOX = { xMin: -8, xMax: 8, yMin: -0.5, yMax: 6.5, zMin: -8, zMax: 8 };
+
+    const LAYERS = [
+      { name: 'Stratum basale',      yMin: 0.0, yMax: 1.8, rows: 1, cols: 6, ySpread: 0.3,  color: 0x2d6a4f, opacity: 0.55, edgeColor: 0x1b4332 },
+      { name: 'Stratum spinosum',     yMin: 1.8, yMax: 4.2, rows: 2, cols: 6, ySpread: 0.25, color: 0x3a86c8, opacity: 0.45, edgeColor: 0x2466a0 },
+      { name: 'Stratum granulosum',   yMin: 4.2, yMax: 5.0, rows: 1, cols: 7, ySpread: 0.12, color: 0xe09f3e, opacity: 0.40, edgeColor: 0xb87d2e },
+      { name: 'Stratum corneum',      yMin: 5.0, yMax: 5.5, rows: 1, cols: 7, ySpread: 0.06, color: 0xc8102e, opacity: 0.35, edgeColor: 0xa00d24 },
+    ];
+
+    // ============================================================
+    // SEED GENERATION
+    // ============================================================
+    // Noisy radial boundary for organic edges
+    const BOUNDARY_SAMPLES = 48;
+    const BOUNDARY_BASE_R = 6.0;
+    const BOUNDARY_NOISE = 0.7;
+    const boundaryRadii = [];
+    for (let i = 0; i < BOUNDARY_SAMPLES; i++) {
+      boundaryRadii.push(BOUNDARY_BASE_R + (Math.random() - 0.5) * 2 * BOUNDARY_NOISE);
+    }
+    function getBoundaryRadius(angle) {
+      const t = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const fIdx = (t / (Math.PI * 2)) * BOUNDARY_SAMPLES;
+      const i0 = Math.floor(fIdx) % BOUNDARY_SAMPLES;
+      const i1 = (i0 + 1) % BOUNDARY_SAMPLES;
+      const frac = fIdx - Math.floor(fIdx);
+      return boundaryRadii[i0] * (1 - frac) + boundaryRadii[i1] * frac;
+    }
+    function isInsideBoundary(x, z) {
+      const r = Math.sqrt(x * x + z * z);
+      const angle = Math.atan2(z, x);
+      return r < getBoundaryRadius(angle);
+    }
+
+    function generateSeeds() {
+      const seeds = [];
+
+      for (const [li, layer] of LAYERS.entries()) {
+        const thickness = layer.yMax - layer.yMin;
+        // Approximate cell spacing from cols (treat as cells across diameter)
+        const cellSpacing = (BOUNDARY_BASE_R * 2) / layer.cols;
+        const jitterXZ = cellSpacing * 0.3;
+
+        for (let row = 0; row < layer.rows; row++) {
+          const yCenter = layer.rows === 1
+            ? (layer.yMin + layer.yMax) / 2
+            : layer.yMin + thickness * (row + 0.5) / layer.rows;
+
+          // Place seeds on a hex grid within a circular region
+          const R = BOUNDARY_BASE_R + 1.5; // generate slightly beyond boundary
+          const dx = cellSpacing;
+          const dz = cellSpacing * Math.sqrt(3) / 2;
+          let rowIdx = 0;
+          for (let z = -R; z <= R; z += dz) {
+            const xOffset = (rowIdx % 2 === 0) ? 0 : dx * 0.5;
+            for (let x = -R; x <= R; x += dx) {
+              const px = x + xOffset + (Math.random() - 0.5) * jitterXZ;
+              const pz = z + (Math.random() - 0.5) * jitterXZ;
+              const r = Math.sqrt(px * px + pz * pz);
+              // Skip seeds way outside
+              if (r > R + 2) continue;
+              seeds.push({
+                pos: new THREE.Vector3(
+                  px,
+                  yCenter + (Math.random() - 0.5) * layer.ySpread,
+                  pz
+                ),
+                layer: li,
+                inside: isInsideBoundary(px, pz)
+              });
+            }
+            rowIdx++;
+          }
+        }
+
+        // Padding seeds in a ring far outside for natural boundary clipping
+        const yMid = (layer.yMin + layer.yMax) / 2;
+        for (let i = 0; i < 32; i++) {
+          const angle = (i / 32) * Math.PI * 2;
+          const padR = 9 + Math.random() * 2;
+          seeds.push({
+            pos: new THREE.Vector3(
+              Math.cos(angle) * padR + (Math.random() - 0.5) * 1.5,
+              yMid + (Math.random() - 0.5) * layer.ySpread * 0.5,
+              Math.sin(angle) * padR + (Math.random() - 0.5) * 1.5
+            ),
+            layer: li,
+            padding: true,
+            inside: false
+          });
+        }
+      }
+      return seeds;
+    }
+
+    // ============================================================
+    // 3D VORONOI VIA HALF-SPACE CLIPPING
+    // ============================================================
+    function bboxVertices(bb) {
+      return [
+        new THREE.Vector3(bb.xMin, bb.yMin, bb.zMin),
+        new THREE.Vector3(bb.xMax, bb.yMin, bb.zMin),
+        new THREE.Vector3(bb.xMin, bb.yMax, bb.zMin),
+        new THREE.Vector3(bb.xMax, bb.yMax, bb.zMin),
+        new THREE.Vector3(bb.xMin, bb.yMin, bb.zMax),
+        new THREE.Vector3(bb.xMax, bb.yMin, bb.zMax),
+        new THREE.Vector3(bb.xMin, bb.yMax, bb.zMax),
+        new THREE.Vector3(bb.xMax, bb.yMax, bb.zMax),
+      ];
+    }
+
+    function clipByPlane(vertices, planePoint, planeNormal) {
+      if (vertices.length < 4) return vertices;
+
+      const EPS = 1e-7;
+      const dist = v =>
+        (v.x - planePoint.x) * planeNormal.x +
+        (v.y - planePoint.y) * planeNormal.y +
+        (v.z - planePoint.z) * planeNormal.z;
+
+      const dists = vertices.map(dist);
+
+      // All inside?
+      if (dists.every(d => d <= EPS)) return vertices;
+      // All outside?
+      if (dists.every(d => d > EPS)) return [];
+
+      // We need the convex hull edges to find intersections.
+      // Build convex hull from vertices using Three.js internals.
+      let hull;
+      try {
+        const geom = new ConvexGeometry(vertices);
+        // Extract edges from the geometry
+        const pos = geom.getAttribute('position');
+        const idx = geom.getIndex();
+        const inside = [];
+        const seen = new Set();
+
+        // Collect inside vertices
+        for (let i = 0; i < vertices.length; i++) {
+          if (dists[i] <= EPS) inside.push(vertices[i].clone());
+        }
+
+        // Find edge crossings from triangle faces
+        const triangles = idx ? idx.array : null;
+        const triCount = triangles ? triangles.length / 3 : pos.count / 3;
+
+        for (let t = 0; t < triCount; t++) {
+          const i0 = triangles ? triangles[t * 3] : t * 3;
+          const i1 = triangles ? triangles[t * 3 + 1] : t * 3 + 1;
+          const i2 = triangles ? triangles[t * 3 + 2] : t * 3 + 2;
+
+          const triVerts = [i0, i1, i2].map(i => new THREE.Vector3(
+            pos.getX(i), pos.getY(i), pos.getZ(i)
+          ));
+          const triDists = triVerts.map(dist);
+
+          const edges = [[0,1],[1,2],[2,0]];
+          for (const [a, b] of edges) {
+            const da = triDists[a], db = triDists[b];
+            if ((da > EPS && db < -EPS) || (da < -EPS && db > EPS)) {
+              // Edge key for dedup
+              const va = triVerts[a], vb = triVerts[b];
+              const key = [va.x, va.y, va.z, vb.x, vb.y, vb.z].map(v => v.toFixed(5)).join(',');
+              const keyRev = [vb.x, vb.y, vb.z, va.x, va.y, va.z].map(v => v.toFixed(5)).join(',');
+              if (!seen.has(key) && !seen.has(keyRev)) {
+                seen.add(key);
+                const t_val = da / (da - db);
+                inside.push(new THREE.Vector3(
+                  va.x + t_val * (vb.x - va.x),
+                  va.y + t_val * (vb.y - va.y),
+                  va.z + t_val * (vb.z - va.z)
+                ));
+              }
+            }
+          }
+        }
+
+        geom.dispose();
+        return dedup(inside);
+      } catch(e) {
+        // Fallback: brute force all-pairs intersection
+        const inside = vertices.filter((_, i) => dists[i] <= EPS).map(v => v.clone());
+        for (let i = 0; i < vertices.length; i++) {
+          for (let j = i + 1; j < vertices.length; j++) {
+            const da = dists[i], db = dists[j];
+            if ((da > EPS && db < -EPS) || (da < -EPS && db > EPS)) {
+              const t_val = da / (da - db);
+              inside.push(new THREE.Vector3(
+                vertices[i].x + t_val * (vertices[j].x - vertices[i].x),
+                vertices[i].y + t_val * (vertices[j].y - vertices[i].y),
+                vertices[i].z + t_val * (vertices[j].z - vertices[i].z)
+              ));
+            }
+          }
+        }
+        return dedup(inside);
+      }
+    }
+
+    function dedup(verts, tol = 1e-4) {
+      const out = [];
+      for (const v of verts) {
+        if (!out.some(u => u.distanceTo(v) < tol)) out.push(v);
+      }
+      return out;
+    }
+
+    function computeVoronoiCell(idx, seeds) {
+      const si = seeds[idx].pos;
+      let verts = bboxVertices(BBOX);
+
+      // Sort other seeds by distance for efficiency
+      const others = seeds
+        .map((s, j) => ({ j, dist: si.distanceToSquared(s.pos) }))
+        .filter(o => o.j !== idx)
+        .sort((a, b) => a.dist - b.dist);
+
+      for (const { j } of others) {
+        if (verts.length < 4) break;
+
+        const sj = seeds[j].pos;
+        const mid = new THREE.Vector3().addVectors(si, sj).multiplyScalar(0.5);
+        const normal = new THREE.Vector3().subVectors(sj, si);
+
+        // Skip if this plane is far from the current cell
+        // (all current verts are well inside this half-space)
+        const maxDist = Math.max(...verts.map(v =>
+          (v.x - mid.x) * normal.x + (v.y - mid.y) * normal.y + (v.z - mid.z) * normal.z
+        ));
+        if (maxDist <= 1e-7) continue; // all inside, skip
+
+        verts = clipByPlane(verts, mid, normal);
+      }
+
+      return verts;
+    }
+
+    // ============================================================
+    // RENDERING
+    // ============================================================
+    const container = document.getElementById('container');
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0xfafaf8);
+    renderer.sortObjects = true;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(16, 10, 16);
+    camera.lookAt(0, 2.8, 0);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 2.8, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 5;
+    controls.maxDistance = 35;
+    controls.update();
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.2);
+    dirLight2.position.set(-5, 3, -5);
+    scene.add(dirLight2);
+
+    // Layer groups for toggling
+    const layerGroups = LAYERS.map(() => {
+      const g = new THREE.Group();
+      scene.add(g);
+      return g;
+    });
+
+    // ============================================================
+    // COMPUTE & BUILD
+    // ============================================================
+    async function build() {
+      const seeds = generateSeeds();
+
+      // Yield to browser between batches
+      let cellCount = 0;
+      for (let i = 0; i < seeds.length; i++) {
+        if (seeds[i].padding || !seeds[i].inside) continue;
+
+        const verts = computeVoronoiCell(i, seeds);
+        if (verts.length < 4) continue;
+
+        const li = seeds[i].layer;
+        const layer = LAYERS[li];
+
+        try {
+          const geom = new ConvexGeometry(verts);
+
+          // Translucent mesh
+          const mat = new THREE.MeshPhysicalMaterial({
+            color: layer.color,
+            transparent: true,
+            opacity: layer.opacity,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            roughness: 0.85,
+            metalness: 0.0,
+          });
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.renderOrder = li;
+
+          // Edge wireframe
+          const edgeGeom = new THREE.EdgesGeometry(geom, 12);
+          const edgeMat = new THREE.LineBasicMaterial({
+            color: layer.edgeColor,
+            transparent: true,
+            opacity: 0.7,
+          });
+          const edges = new THREE.LineSegments(edgeGeom, edgeMat);
+          edges.renderOrder = li + 0.5;
+
+          const group = new THREE.Group();
+          group.add(mesh);
+          group.add(edges);
+          layerGroups[li].add(group);
+          cellCount++;
+        } catch(e) {
+          // Skip degenerate cells
+        }
+
+        // Yield every 10 cells to keep UI responsive
+        if (cellCount % 10 === 0) {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      document.getElementById('loading').style.display = 'none';
+      console.log(`Built ${cellCount} cells`);
+    }
+
+    // ============================================================
+    // LEGEND TOGGLE
+    // ============================================================
+    document.querySelectorAll('.legend-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const li = parseInt(item.dataset.layer);
+        const group = layerGroups[li];
+        group.visible = !group.visible;
+        item.classList.toggle('hidden', !group.visible);
+      });
+    });
+
+    // ============================================================
+    // RESIZE
+    // ============================================================
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ============================================================
+    // RENDER LOOP
+    // ============================================================
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.5;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Start building after first frame
+    requestAnimationFrame(() => build());
+  </script>
+</body>
+</html>

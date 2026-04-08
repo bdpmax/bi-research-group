@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Propelled Voronoi — Fluctuating Boundary</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0f0f1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script type="module">
+  import { Delaunay } from 'https://cdn.jsdelivr.net/npm/d3-delaunay@6/+esm';
+
+  // ─── CONFIG ───
+  const NUM_CELLS    = 80;
+  const SPEED        = 0.8;
+  const NOISE        = 0.15;
+  const ALIGNMENT    = 0.08;
+  const REPULSION    = 1.2;
+  const AREA_CORRECT = 0.5;
+  const BOUNDARY_PAD = 0.92;
+  const LINE_COLOR   = 'rgba(180, 210, 255, 0.45)';
+  const LINE_WIDTH   = 1.0;
+  const FILL_OPACITY = 0.25;
+  const DOT_RADIUS   = 1.8;
+  const DOT_COLOR    = 'rgba(255, 255, 255, 0.7)';
+  const HUE_BASE     = 210;
+  const HUE_RANGE    = 60;
+  const SATURATION   = 55;
+  const LIGHTNESS    = 55;
+
+  // Boundary fluctuation
+  const NUM_MODES      = 6;     // number of Fourier modes
+  const FLUCTUATION    = 0.12;  // amplitude as fraction of R (0 = perfect circle)
+  const FLUCTUATION_SPEED = 4; // how fast modes evolve
+  const BOUNDARY_PTS   = 128;   // points to sample on boundary curve
+
+  // ─── SETUP ───
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, cx, cy, R;
+  let cells = [];
+  let time = 0;
+
+  // Fourier modes for boundary: each has amplitude, frequency, phase, and drift rate
+  const modes = [];
+  for (let i = 0; i < NUM_MODES; i++) {
+    modes.push({
+      freq: i + 2,  // angular frequency (mode 2, 3, 4, ...)
+      amp: FLUCTUATION * (0.5 + 0.5 * Math.random()) / (1 + i * 0.5),
+      phase: Math.random() * Math.PI * 2,
+      drift: (Math.random() - 0.5) * FLUCTUATION_SPEED,
+    });
+  }
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2;
+    cy = H / 2;
+    R = Math.min(W, H) * 0.42 * BOUNDARY_PAD;
+  }
+
+  // Get boundary radius at a given angle for current time
+  function boundaryRadius(angle) {
+    let r = R;
+    for (const m of modes) {
+      r += R * m.amp * Math.sin(m.freq * angle + m.phase + m.drift * time);
+    }
+    return r;
+  }
+
+  // Sample boundary as polygon
+  function getBoundaryPoly() {
+    const pts = [];
+    for (let i = 0; i < BOUNDARY_PTS; i++) {
+      const a = (i / BOUNDARY_PTS) * Math.PI * 2;
+      const r = boundaryRadius(a);
+      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    return pts;
+  }
+
+  function initCells() {
+    cells = [];
+    for (let i = 0; i < NUM_CELLS; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * R * 0.85;
+      cells.push({
+        x: cx + Math.cos(angle) * r,
+        y: cy + Math.sin(angle) * r,
+        theta: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  // ─── POLYGON CLIPPING (Sutherland-Hodgman against boundary polygon) ───
+  // For performance, clip Voronoi cells against the boundary using
+  // point-in-boundary test based on radial distance
+  function isInsideBoundary(px, py) {
+    const dx = px - cx;
+    const dy = py - cy;
+    const angle = Math.atan2(dy, dx);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    return dist <= boundaryRadius(angle);
+  }
+
+  function boundaryPointAtAngle(angle) {
+    const r = boundaryRadius(angle);
+    return [cx + Math.cos(angle) * r, cy + Math.sin(angle) * r];
+  }
+
+  // Find intersection of line segment (p1->p2) with boundary
+  function segBoundaryIntersection(p1, p2) {
+    // Binary search for the crossing point
+    let lo = 0, hi = 1;
+    const in1 = isInsideBoundary(p1[0], p1[1]);
+    for (let iter = 0; iter < 16; iter++) {
+      const mid = (lo + hi) / 2;
+      const mx = p1[0] + mid * (p2[0] - p1[0]);
+      const my = p1[1] + mid * (p2[1] - p1[1]);
+      if (isInsideBoundary(mx, my) === in1) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    const t = (lo + hi) / 2;
+    return [p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])];
+  }
+
+  function clipPolyToBoundary(poly) {
+    const out = [];
+    const n = poly.length - 1; // last point duplicates first
+    for (let i = 0; i < n; i++) {
+      const curr = poly[i];
+      const next = poly[(i + 1) % n];
+      const currIn = isInsideBoundary(curr[0], curr[1]);
+      const nextIn = isInsideBoundary(next[0], next[1]);
+
+      if (currIn) out.push(curr);
+
+      if (currIn !== nextIn) {
+        out.push(segBoundaryIntersection(curr, next));
+      }
+    }
+    return out;
+  }
+
+  // ─── PHYSICS ───
+  function step() {
+    time += 0.016; // ~60fps timestep
+
+    const coords = new Float64Array(cells.length * 2);
+    for (let i = 0; i < cells.length; i++) {
+      coords[i * 2] = cells[i].x;
+      coords[i * 2 + 1] = cells[i].y;
+    }
+    const delaunay = new Delaunay(coords);
+
+    // Neighbor alignment
+    const avgTheta = new Float64Array(cells.length);
+    for (let i = 0; i < cells.length; i++) {
+      let sx = 0, sy = 0, count = 0;
+      for (const j of delaunay.neighbors(i)) {
+        sx += Math.cos(cells[j].theta);
+        sy += Math.sin(cells[j].theta);
+        count++;
+      }
+      avgTheta[i] = count > 0 ? Math.atan2(sy / count, sx / count) : cells[i].theta;
+    }
+    for (let i = 0; i < cells.length; i++) {
+      let diff = avgTheta[i] - cells[i].theta;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      cells[i].theta += ALIGNMENT * diff;
+    }
+
+    // Voronoi for area-based forces
+    const voronoiPhys = delaunay.voronoi([cx - R * 1.3, cy - R * 1.3, cx + R * 1.3, cy + R * 1.3]);
+    const idealArea = Math.PI * R * R / cells.length;
+    const idealDist = Math.sqrt(idealArea / Math.PI) * 2;
+
+    const fx = new Float64Array(cells.length);
+    const fy = new Float64Array(cells.length);
+
+    for (let i = 0; i < cells.length; i++) {
+      // Distance-based repulsion
+      for (const j of delaunay.neighbors(i)) {
+        const dx = cells[j].x - cells[i].x;
+        const dy = cells[j].y - cells[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0 && dist < idealDist) {
+          const force = REPULSION * ((idealDist - dist) / idealDist) ** 2;
+          fx[i] -= (dx / dist) * force;
+          fy[i] -= (dy / dist) * force;
+        }
+      }
+
+      // Lloyd relaxation clipped to fluctuating boundary
+      const poly = voronoiPhys.cellPolygon(i);
+      if (poly) {
+        const clipped = clipPolyToBoundary(poly);
+        if (clipped.length >= 3) {
+          let centX = 0, centY = 0, areaSum = 0;
+          for (let j = 0; j < clipped.length; j++) {
+            const k = (j + 1) % clipped.length;
+            const cross = clipped[j][0] * clipped[k][1] - clipped[k][0] * clipped[j][1];
+            centX += (clipped[j][0] + clipped[k][0]) * cross;
+            centY += (clipped[j][1] + clipped[k][1]) * cross;
+            areaSum += cross;
+          }
+          areaSum /= 2;
+          if (Math.abs(areaSum) > 1) {
+            centX /= (6 * areaSum);
+            centY /= (6 * areaSum);
+            fx[i] += (centX - cells[i].x) * AREA_CORRECT;
+            fy[i] += (centY - cells[i].y) * AREA_CORRECT;
+          }
+        }
+      }
+    }
+
+    // Move
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      c.theta += (Math.random() - 0.5) * 2 * NOISE;
+      c.x += Math.cos(c.theta) * SPEED + fx[i];
+      c.y += Math.sin(c.theta) * SPEED + fy[i];
+
+      // Fluctuating boundary confinement
+      const dx = c.x - cx;
+      const dy = c.y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      const bR = boundaryRadius(angle);
+
+      if (dist > bR * 0.95) {
+        const toCenter = Math.atan2(-dy, -dx);
+        let d = toCenter - c.theta;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        const strength = Math.min(1, (dist - bR * 0.85) / (bR * 0.15));
+        c.theta += d * strength * 0.3;
+        if (dist > bR) {
+          const scale = bR / dist;
+          c.x = cx + dx * scale;
+          c.y = cy + dy * scale;
+        }
+      }
+    }
+  }
+
+  // ─── RENDER ───
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Get boundary shape
+    const bPoly = getBoundaryPoly();
+
+    // Boundary glow
+    const grad = ctx.createRadialGradient(cx, cy, R * 0.75, cx, cy, R * 1.2);
+    grad.addColorStop(0, 'rgba(100, 140, 200, 0)');
+    grad.addColorStop(0.7, 'rgba(100, 140, 200, 0.025)');
+    grad.addColorStop(1, 'rgba(100, 140, 200, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Draw boundary
+    ctx.beginPath();
+    ctx.moveTo(bPoly[0][0], bPoly[0][1]);
+    for (let i = 1; i < bPoly.length; i++) {
+      ctx.lineTo(bPoly[i][0], bPoly[i][1]);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(140, 170, 220, 0.15)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Voronoi
+    const coords = new Float64Array(cells.length * 2);
+    for (let i = 0; i < cells.length; i++) {
+      coords[i * 2] = cells[i].x;
+      coords[i * 2 + 1] = cells[i].y;
+    }
+    const delaunay = new Delaunay(coords);
+    const voronoi = delaunay.voronoi([cx - R * 1.3, cy - R * 1.3, cx + R * 1.3, cy + R * 1.3]);
+
+    // Clip rendering to boundary shape
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(bPoly[0][0], bPoly[0][1]);
+    for (let i = 1; i < bPoly.length; i++) {
+      ctx.lineTo(bPoly[i][0], bPoly[i][1]);
+    }
+    ctx.closePath();
+    ctx.clip();
+
+    const idealArea = Math.PI * R * R / cells.length;
+
+    // Fills
+    for (let i = 0; i < cells.length; i++) {
+      const poly = voronoi.cellPolygon(i);
+      if (!poly) continue;
+
+      let area = 0;
+      for (let j = 0; j < poly.length - 1; j++) {
+        area += poly[j][0] * poly[j + 1][1] - poly[j + 1][0] * poly[j][1];
+      }
+      area = Math.abs(area) / 2;
+      const hue = HUE_BASE + (area / idealArea - 1) * HUE_RANGE;
+
+      ctx.beginPath();
+      ctx.moveTo(poly[0][0], poly[0][1]);
+      for (let j = 1; j < poly.length; j++) ctx.lineTo(poly[j][0], poly[j][1]);
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${hue}, ${SATURATION}%, ${LIGHTNESS}%, ${FILL_OPACITY})`;
+      ctx.fill();
+    }
+
+    // Edges
+    ctx.lineWidth = LINE_WIDTH;
+    ctx.strokeStyle = LINE_COLOR;
+    ctx.beginPath();
+    for (let i = 0; i < cells.length; i++) {
+      const poly = voronoi.cellPolygon(i);
+      if (!poly) continue;
+      ctx.moveTo(poly[0][0], poly[0][1]);
+      for (let j = 1; j < poly.length; j++) ctx.lineTo(poly[j][0], poly[j][1]);
+      ctx.closePath();
+    }
+    ctx.stroke();
+
+    // Dots
+    ctx.fillStyle = DOT_COLOR;
+    for (let i = 0; i < cells.length; i++) {
+      ctx.beginPath();
+      ctx.arc(cells[i].x, cells[i].y, DOT_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // ─── LOOP ───
+  function animate() {
+    step();
+    draw();
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', () => {
+    resize();
+    for (const c of cells) {
+      const dx = c.x - cx;
+      const dy = c.y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      const bR = boundaryRadius(angle);
+      if (dist > bR) {
+        const scale = bR / dist;
+        c.x = cx + dx * scale;
+        c.y = cy + dy * scale;
+      }
+    }
+  });
+
+  resize();
+  initCells();
+  animate();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bi Research Group | Theoretical Soft Matter &amp; Biophysics</title>
+  <meta name="description" content="Interdisciplinary theoretical and computational research group at Northeastern University, working at the interface of soft condensed matter physics and biology.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <a href="index.html" class="nav-brand">
+        Bi Group <span>| Northeastern</span>
+      </a>
+      <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <ul class="nav-links">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="research.html">Research</a></li>
+        <li><a href="people.html">People</a></li>
+        <li><a href="publications.html">Publications</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero with Voronoi Animation -->
+  <section class="voronoi-hero">
+    <canvas id="voronoi-canvas"></canvas>
+    <div class="voronoi-hero-overlay">
+      <div class="container">
+        <div class="hero-content">
+          <span class="hero-label">Northeastern University &middot; Department of Physics</span>
+          <h1>Theoretical Soft Matter &amp; Biophysics Group</h1>
+          <p><strong>We are an interdisciplinary theoretical and computational research group working at the interface of soft condensed matter physics and biology. We study non-equilibrium mechanics, collective behaviors, and solid-fluid transitions in systems ranging from biological tissues to amorphous materials.</strong></p>
+          <div class="hero-actions">
+            <a href="research.html" class="btn btn-primary">Our Research</a>
+            <a href="publications.html" class="btn btn-outline">Publications</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script type="module">
+    import { Delaunay } from 'https://cdn.jsdelivr.net/npm/d3-delaunay@6/+esm';
+
+    const NUM_CELLS    = 80;
+    const SPEED        = 0.8;
+    const NOISE        = 0.15;
+    const ALIGNMENT    = 0.08;
+    const REPULSION    = 1.2;
+    const AREA_CORRECT = 0.5;
+    const BOUNDARY_PAD = 0.92;
+    const LINE_COLOR   = 'rgba(26, 26, 46, 0.25)';
+    const LINE_WIDTH   = 0.8;
+    const FILL_OPACITY = 0.18;
+    const DOT_RADIUS   = 1.5;
+    const DOT_COLOR    = 'rgba(200, 16, 46, 0.5)';
+    const HUE_BASE     = 210;
+    const HUE_RANGE    = 40;
+    const SATURATION   = 50;
+    const LIGHTNESS    = 55;
+    const NUM_MODES      = 6;
+    const FLUCTUATION    = 0.12;
+    const FLUCTUATION_SPEED = 4;
+    const BOUNDARY_PTS   = 128;
+
+    const canvas = document.getElementById('voronoi-canvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, cx, cy, R;
+    let cells = [];
+    let time = 0;
+
+    const modes = [];
+    for (let i = 0; i < NUM_MODES; i++) {
+      modes.push({
+        freq: i + 2,
+        amp: FLUCTUATION * (0.5 + 0.5 * Math.random()) / (1 + i * 0.5),
+        phase: Math.random() * Math.PI * 2,
+        drift: (Math.random() - 0.5) * FLUCTUATION_SPEED,
+      });
+    }
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      const section = canvas.closest('.voronoi-hero');
+      W = section.offsetWidth;
+      H = section.offsetHeight;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cx = W * 0.65;
+      cy = H / 2;
+      R = Math.min(W, H) * 0.42 * BOUNDARY_PAD;
+    }
+
+    function boundaryRadius(angle) {
+      let r = R;
+      for (const m of modes) r += R * m.amp * Math.sin(m.freq * angle + m.phase + m.drift * time);
+      return r;
+    }
+
+    function getBoundaryPoly() {
+      const pts = [];
+      for (let i = 0; i < BOUNDARY_PTS; i++) {
+        const a = (i / BOUNDARY_PTS) * Math.PI * 2;
+        const r = boundaryRadius(a);
+        pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+      }
+      return pts;
+    }
+
+    function initCells() {
+      cells = [];
+      for (let i = 0; i < NUM_CELLS; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * R * 0.85;
+        cells.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r, theta: Math.random() * Math.PI * 2 });
+      }
+    }
+
+    function isInsideBoundary(px, py) {
+      const dx = px - cx, dy = py - cy;
+      return Math.sqrt(dx * dx + dy * dy) <= boundaryRadius(Math.atan2(dy, dx));
+    }
+
+    function segBoundaryIntersection(p1, p2) {
+      let lo = 0, hi = 1;
+      const in1 = isInsideBoundary(p1[0], p1[1]);
+      for (let iter = 0; iter < 16; iter++) {
+        const mid = (lo + hi) / 2;
+        const mx = p1[0] + mid * (p2[0] - p1[0]), my = p1[1] + mid * (p2[1] - p1[1]);
+        if (isInsideBoundary(mx, my) === in1) lo = mid; else hi = mid;
+      }
+      const t = (lo + hi) / 2;
+      return [p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])];
+    }
+
+    function clipPolyToBoundary(poly) {
+      const out = [];
+      const n = poly.length - 1;
+      for (let i = 0; i < n; i++) {
+        const curr = poly[i], next = poly[(i + 1) % n];
+        const currIn = isInsideBoundary(curr[0], curr[1]);
+        const nextIn = isInsideBoundary(next[0], next[1]);
+        if (currIn) out.push(curr);
+        if (currIn !== nextIn) out.push(segBoundaryIntersection(curr, next));
+      }
+      return out;
+    }
+
+    function step() {
+      time += 0.016;
+      const coords = new Float64Array(cells.length * 2);
+      for (let i = 0; i < cells.length; i++) { coords[i * 2] = cells[i].x; coords[i * 2 + 1] = cells[i].y; }
+      const delaunay = new Delaunay(coords);
+
+      const avgTheta = new Float64Array(cells.length);
+      for (let i = 0; i < cells.length; i++) {
+        let sx = 0, sy = 0, count = 0;
+        for (const j of delaunay.neighbors(i)) { sx += Math.cos(cells[j].theta); sy += Math.sin(cells[j].theta); count++; }
+        avgTheta[i] = count > 0 ? Math.atan2(sy / count, sx / count) : cells[i].theta;
+      }
+      for (let i = 0; i < cells.length; i++) {
+        let diff = avgTheta[i] - cells[i].theta;
+        cells[i].theta += ALIGNMENT * Math.atan2(Math.sin(diff), Math.cos(diff));
+      }
+
+      const voronoiPhys = delaunay.voronoi([cx - R * 1.3, cy - R * 1.3, cx + R * 1.3, cy + R * 1.3]);
+      const idealArea = Math.PI * R * R / cells.length;
+      const idealDist = Math.sqrt(idealArea / Math.PI) * 2;
+      const fx = new Float64Array(cells.length), fy = new Float64Array(cells.length);
+
+      for (let i = 0; i < cells.length; i++) {
+        for (const j of delaunay.neighbors(i)) {
+          const dx = cells[j].x - cells[i].x, dy = cells[j].y - cells[i].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 0 && dist < idealDist) {
+            const force = REPULSION * ((idealDist - dist) / idealDist) ** 2;
+            fx[i] -= (dx / dist) * force; fy[i] -= (dy / dist) * force;
+          }
+        }
+        const poly = voronoiPhys.cellPolygon(i);
+        if (poly) {
+          const clipped = clipPolyToBoundary(poly);
+          if (clipped.length >= 3) {
+            let centX = 0, centY = 0, areaSum = 0;
+            for (let j = 0; j < clipped.length; j++) {
+              const k = (j + 1) % clipped.length;
+              const cross = clipped[j][0] * clipped[k][1] - clipped[k][0] * clipped[j][1];
+              centX += (clipped[j][0] + clipped[k][0]) * cross; centY += (clipped[j][1] + clipped[k][1]) * cross; areaSum += cross;
+            }
+            areaSum /= 2;
+            if (Math.abs(areaSum) > 1) { centX /= (6 * areaSum); centY /= (6 * areaSum); fx[i] += (centX - cells[i].x) * AREA_CORRECT; fy[i] += (centY - cells[i].y) * AREA_CORRECT; }
+          }
+        }
+      }
+
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i];
+        c.theta += (Math.random() - 0.5) * 2 * NOISE;
+        c.x += Math.cos(c.theta) * SPEED + fx[i]; c.y += Math.sin(c.theta) * SPEED + fy[i];
+        const dx = c.x - cx, dy = c.y - cy, dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx), bR = boundaryRadius(angle);
+        if (dist > bR * 0.95) {
+          let d = Math.atan2(-dy, -dx) - c.theta; d = Math.atan2(Math.sin(d), Math.cos(d));
+          c.theta += d * Math.min(1, (dist - bR * 0.85) / (bR * 0.15)) * 0.3;
+          if (dist > bR) { const scale = bR / dist; c.x = cx + dx * scale; c.y = cy + dy * scale; }
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      const bPoly = getBoundaryPoly();
+      const grad = ctx.createRadialGradient(cx, cy, R * 0.75, cx, cy, R * 1.2);
+      grad.addColorStop(0, 'rgba(26, 26, 46, 0)'); grad.addColorStop(0.7, 'rgba(26, 26, 46, 0.015)'); grad.addColorStop(1, 'rgba(26, 26, 46, 0)');
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+      ctx.beginPath(); ctx.moveTo(bPoly[0][0], bPoly[0][1]);
+      for (let i = 1; i < bPoly.length; i++) ctx.lineTo(bPoly[i][0], bPoly[i][1]);
+      ctx.closePath(); ctx.strokeStyle = 'rgba(26, 26, 46, 0.12)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      const coords = new Float64Array(cells.length * 2);
+      for (let i = 0; i < cells.length; i++) { coords[i * 2] = cells[i].x; coords[i * 2 + 1] = cells[i].y; }
+      const delaunay = new Delaunay(coords);
+      const voronoi = delaunay.voronoi([cx - R * 1.3, cy - R * 1.3, cx + R * 1.3, cy + R * 1.3]);
+
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(bPoly[0][0], bPoly[0][1]);
+      for (let i = 1; i < bPoly.length; i++) ctx.lineTo(bPoly[i][0], bPoly[i][1]);
+      ctx.closePath(); ctx.clip();
+
+      const idealArea = Math.PI * R * R / cells.length;
+      for (let i = 0; i < cells.length; i++) {
+        const poly = voronoi.cellPolygon(i); if (!poly) continue;
+        let area = 0;
+        for (let j = 0; j < poly.length - 1; j++) area += poly[j][0] * poly[j + 1][1] - poly[j + 1][0] * poly[j][1];
+        area = Math.abs(area) / 2;
+        ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]);
+        for (let j = 1; j < poly.length; j++) ctx.lineTo(poly[j][0], poly[j][1]);
+        ctx.closePath(); ctx.fillStyle = `hsla(${HUE_BASE + (area / idealArea - 1) * HUE_RANGE}, ${SATURATION}%, ${LIGHTNESS}%, ${FILL_OPACITY})`; ctx.fill();
+      }
+
+      ctx.lineWidth = LINE_WIDTH; ctx.strokeStyle = LINE_COLOR; ctx.beginPath();
+      for (let i = 0; i < cells.length; i++) {
+        const poly = voronoi.cellPolygon(i); if (!poly) continue;
+        ctx.moveTo(poly[0][0], poly[0][1]);
+        for (let j = 1; j < poly.length; j++) ctx.lineTo(poly[j][0], poly[j][1]);
+        ctx.closePath();
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = DOT_COLOR;
+      for (let i = 0; i < cells.length; i++) { ctx.beginPath(); ctx.arc(cells[i].x, cells[i].y, DOT_RADIUS, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    }
+
+    function animate() { step(); draw(); requestAnimationFrame(animate); }
+
+    window.addEventListener('resize', () => {
+      resize();
+      for (const c of cells) {
+        const dx = c.x - cx, dy = c.y - cy, dist = Math.sqrt(dx * dx + dy * dy);
+        const bR = boundaryRadius(Math.atan2(dy, dx));
+        if (dist > bR) { const scale = bR / dist; c.x = cx + dx * scale; c.y = cy + dy * scale; }
+      }
+    });
+
+    resize(); initCells(); animate();
+  </script>
+
+  <!-- Announcement -->
+  <section class="section section-alt">
+    <div class="container">
+      <div class="section-header">
+        <h2>Announcements</h2>
+      </div>
+      <div class="announcement">
+        <div class="announcement-badge">&#x1F393;</div>
+        <div class="announcement-content">
+          <h3>New Biophysics PhD Program at Northeastern University</h3>
+          <p>A new PhD program bridging physics, biology, and chemistry to explore living systems across scales, from molecules to organisms. The program features lab rotations, training in machine learning and advanced imaging, seminars with leading researchers, and full funding packages covering tuition, stipends, and health insurance.</p>
+          <a href="https://cos.northeastern.edu/biophysics-phd/" target="_blank" rel="noopener">Learn more about the program &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Funding -->
+  <section class="funding-bar">
+    <div class="container">
+      <p>Funding Support</p>
+      <div class="funding-logos">
+        <img src="images/funding-support.png" alt="Funding support logos">
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-brand">
+          <h3>Bi Research Group</h3>
+          <p>101 Belvidere St<br>Northeastern University<br>Boston, Massachusetts 02115</p>
+        </div>
+        <div class="footer-links">
+          <div class="footer-links-col">
+            <h4>Pages</h4>
+            <ul>
+              <li><a href="index.html">Home</a></li>
+              <li><a href="research.html">Research</a></li>
+              <li><a href="people.html">People</a></li>
+              <li><a href="publications.html">Publications</a></li>
+            </ul>
+          </div>
+          <div class="footer-links-col">
+            <h4>Links</h4>
+            <ul>
+              <li><a href="https://cos.northeastern.edu/physics/" target="_blank" rel="noopener">Northeastern Physics</a></li>
+              <li><a href="https://biophysics.sites.northeastern.edu/" target="_blank" rel="noopener">Physics of Living Systems</a></li>
+              <li><a href="https://cos.northeastern.edu/biophysics-phd/" target="_blank" rel="noopener">Biophysics PhD Program</a></li>
+              <li><a href="https://ctbp.northeastern.edu/" target="_blank" rel="noopener">CTBP @ Northeastern</a></li>
+              <li><a href="https://ctbp.rice.edu/" target="_blank" rel="noopener">CTBP @ Rice</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <a href="https://www.northeastern.edu" target="_blank" rel="noopener"><img src="images/Monogram Wordmark_KO.png" alt="Northeastern University"></a>
+        <span>&copy; 2026 Bi Research Group, Northeastern University. All rights reserved.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

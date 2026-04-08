@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D Levy Flight | Bi Research Group</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, sans-serif;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    // Hi-DPI support
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const W = () => window.innerWidth;
+    const H = () => window.innerHeight;
+
+    // ============================================================
+    // LEVY FLIGHT PARAMETERS
+    // ============================================================
+    const ALPHA = 1.5;          // Levy exponent (1 < alpha < 2 for heavy tails)
+    const MIN_STEP = 1;         // Minimum step length
+    const MAX_STEP = 300;       // Maximum step length (visual cap)
+    const STEP_SCALE = 3;       // Scale factor for step lengths
+    const STEPS_PER_FRAME = 2;  // Steps computed per animation frame
+    const MAX_TRAIL = 4000;     // Maximum trail segments stored
+    const TRAIL_FADE = true;    // Fade older trail segments
+
+    // ============================================================
+    // LEVY FLIGHT STEP GENERATOR
+    // ============================================================
+    // Inverse CDF method: step ~ (u)^(-1/alpha) for uniform u in (0,1)
+    function levyStep() {
+      const u = Math.random();
+      const r = MIN_STEP * Math.pow(u, -1 / ALPHA);
+      return Math.min(r, MAX_STEP) * STEP_SCALE;
+    }
+
+    // ============================================================
+    // PARTICLE STATE
+    // ============================================================
+    let x = W() / 2;
+    let y = H() / 2;
+    const trail = []; // Array of {x0, y0, x1, y1, len}
+
+    // Color palette for trail — hue shifts slowly over time
+    let hueBase = 200; // Start with blue
+
+    function step() {
+      const angle = Math.random() * Math.PI * 2;
+      const len = levyStep();
+      const nx = x + Math.cos(angle) * len;
+      const ny = y + Math.sin(angle) * len;
+
+      // Store trail segment
+      trail.push({ x0: x, y0: y, x1: nx, y1: ny, len, idx: trail.length });
+
+      // Trim trail if too long
+      if (trail.length > MAX_TRAIL) trail.shift();
+
+      // Wrap around edges with padding
+      x = nx;
+      y = ny;
+      const pad = 50;
+      if (x < -pad) x = W() + pad;
+      if (x > W() + pad) x = -pad;
+      if (y < -pad) y = H() + pad;
+      if (y > H() + pad) y = -pad;
+    }
+
+    // ============================================================
+    // RENDERING
+    // ============================================================
+    function draw() {
+      // Fade background slowly for ghosting effect
+      ctx.fillStyle = 'rgba(10, 10, 26, 0.04)';
+      ctx.fillRect(0, 0, W(), H());
+
+      const total = trail.length;
+      if (total === 0) return;
+
+      // Draw trail segments
+      for (let i = 0; i < total; i++) {
+        const seg = trail[i];
+        const age = (total - i) / total; // 0 = newest, 1 = oldest
+        const alpha = TRAIL_FADE ? Math.pow(1 - age, 0.5) * 0.8 + 0.05 : 0.6;
+
+        // Color: long jumps are warmer (red/orange), short steps are cooler (blue/cyan)
+        const lenNorm = Math.min(seg.len / (MAX_STEP * STEP_SCALE * 0.3), 1);
+        const hue = 210 - lenNorm * 160; // 210 (blue) -> 50 (orange)
+        const sat = 70 + lenNorm * 20;
+        const lum = 55 + lenNorm * 15;
+
+        // Line width: thicker for longer jumps
+        const lw = 0.5 + lenNorm * 2.5;
+
+        ctx.beginPath();
+        ctx.moveTo(seg.x0, seg.y0);
+        ctx.lineTo(seg.x1, seg.y1);
+        ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${lum}%, ${alpha})`;
+        ctx.lineWidth = lw;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+
+      // Draw current particle position
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, 8);
+      glow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+      glow.addColorStop(0.3, 'rgba(100, 180, 255, 0.5)');
+      glow.addColorStop(1, 'rgba(100, 180, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - 8, y - 8, 16, 16);
+
+      // Solid dot
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    }
+
+    // ============================================================
+    // ANIMATION LOOP
+    // ============================================================
+    function animate() {
+      for (let i = 0; i < STEPS_PER_FRAME; i++) step();
+      draw();
+      requestAnimationFrame(animate);
+    }
+
+    // Clear canvas initially
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, W(), H());
+
+    animate();
+  </script>
+</body>
+</html>
