@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:sites.google.com)",
+      "Bash(curl -sL -o dapeng-bi.jpg \"https://lh3.googleusercontent.com/sitesv/APaQ0STYuZd0fJPguaZaHne0_NjaCX2wtwPJSk65ib6B_wiM2umdS2_b8b2Pvd1DZtHTFwzGBV0tBWETry2ifE7OHsfQvcxgaFjsHw1oKvIjSwM7xcM3sBDQvWR3QJhEAvNNF5M2TaTg30fgNNKsjMcY32JWhVLqd9z45FEUm7KkDLuehh8QDxNVPS0-=w400\")",
+      "Bash(curl -sL -o sayantani-kayal.jpg \"https://lh3.googleusercontent.com/sitesv/APaQ0STpRPpmj18PfG6LvCR5xhVVb2ePNJFN4zessO5CfONd8tqzNaivoqXQJvt44WIP-v0zF-o5L_OqlyiRRdVEWFv29rzy9kMczYa6y_8FF6MIR1IHAVH6q7UL2e9qQhvD4m1jxIMQEZHyMwCHczX0qhmkVBJNbJkj7v6HjBf-Klf0PW7JPDk0s3DsGgGc6chT7PVb9Y9jhT64Tq26OWmAmAByK8U68RCEcE6e=w400\")",
+      "Bash(curl -sL -o anh-nguyen.jpg \"https://lh3.googleusercontent.com/sitesv/APaQ0SRxuy9uAUpYKG2zU7A--IepC7JgVtVoxbLUJnvnfagqIFX0oKjnn_rIzyTRgvGUURwN9jUkSoABRRAqSB_-1k3T8Aj_Aio_TbKIjrAZZgAxzNSGNto39-V8G47iFxfU6AxcwhH2u_4BATVkGY-1ksKUeWW_34FVY43ny8RCQyQSGpIm-ovAiS23DUEHmdEN95HZ9RClpK0y2XCz3H5t7pbuuPlLFWTDQAZxprQ=w400\")",
+      "Bash(curl -sL -o mostafa-alkady.jpg \"https://lh3.googleusercontent.com/sitesv/APaQ0SQSgLc0Jf0dqmxUFy-pJqJ6HJ2U8mW7Xq7YHf9gyDvFMD2DYJF7dnm6P3--q3ht0LWII_cDXTeu6BMhguiQwqLvLA2PfU0iLEtj7jMaSZTksJA-tvJDFjwWQCezOsHlwDsrA8vU1xg3NINxRB1GlEKefqbOBnfLNqgrK6p2ulJpYthEz-IFGFjglm8Emx3ufY7AFQM2fxdFml0kPVKfaQz4yg-ftKHOl_xDSsQ=w400\")",
+      "Bash(curl -sL -o henry-stepanyants.jpg \"https://lh3.googleusercontent.com/sitesv/APaQ0SSb1V7X3Hg-hr2xmAabVext6huxKtbZp5Oul78qIrn4fdJ3pSRjDjFmhJ-va5V7EeK_hBszxDOz4X6gD9aPX8ZKGfov65fd92_KjubSj8K02QstQeJG4oc_d2ExttoM55aHg8fgSSJUnViWRtno6_WY4TJMFxHvhAyC1_QGWqPniMJozYVS12GFHdEFCDJzBKN_Jre8bUw3njFM7mmB7cYRKmk_QzLl7D0_E1g=w400\")",
+      "Bash(python3:*)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:doi.org)",
+      "WebFetch(domain:biorxiv.org)",
+      "WebFetch(domain:export.arxiv.org)",
+      "WebFetch(domain:www.biorxiv.org)",
+      "WebFetch(domain:api.biorxiv.org)",
+      "Bash(command ls:*)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/max/Dropbox/research_group/group_website_redesign_claude_code/images/funding-support.png)",
+      "Bash(for d:*)",
+      "Bash(do echo:*)",
+      "Bash(done)",
+      "Bash(sed 's/Mechanics of Epithelial Layers/The Physics of Cancer/g; s/Research on the mechanics of epithelial layers/Research on the physics of cancer/' research-epithelial.html)",
+      "Bash(sed 's/Mechanics of Epithelial Layers/Cellular Dynamics on Curved Surfaces/g; s/Research on the mechanics of epithelial layers/Research on cellular dynamics on curved surfaces/' research-epithelial.html)",
+      "Bash(sed 's/Mechanics of Epithelial Layers/Amorphous Metamaterials/g; s/Research on the mechanics of epithelial layers/Research on amorphous metamaterials/' research-epithelial.html)",
+      "mcp__Claude_Preview__preview_start",
+      "WebSearch",
+      "WebFetch(domain:www.impactmedialab.com)",
+      "WebFetch(domain:bhamla.gatech.edu)",
+      "WebFetch(domain:crowtherlab.com)",
+      "WebFetch(domain:www.campbellstaton.com)",
+      "WebFetch(domain:marchetti.physics.ucsb.edu)",
+      "WebFetch(domain:brennergroup.seas.harvard.edu)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
