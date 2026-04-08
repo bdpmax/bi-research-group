@@ -1,3 +1,4 @@
 old/
 *.md
 .DS_Store
+.claude/
