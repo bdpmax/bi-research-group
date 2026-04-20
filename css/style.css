@@ -72,7 +72,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .section {
-  padding: 80px 0;
+  padding: 96px 0;
 }
 
 .section-alt {
@@ -80,7 +80,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .section-header {
-  margin-bottom: 48px;
+  margin-bottom: 56px;
 }
 
 .section-header h2 {
@@ -104,7 +104,7 @@ h1, h2, h3, h4, h5, h6 {
 .section-header p {
   color: var(--color-text-light);
   font-size: 1.05rem;
-  max-width: 720px;
+  max-width: 68ch;
 }
 
 .sr-only {
@@ -189,7 +189,7 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 1px;
   transform: scaleX(0);
   transform-origin: center;
-  transition: transform 0.3s ease;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .nav-links a:hover {
@@ -277,7 +277,7 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.7;
   color: var(--color-text-light);
   margin-bottom: 32px;
-  max-width: 640px;
+  max-width: 62ch;
 }
 
 .hero-actions {
@@ -731,23 +731,26 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .pub-item {
-  padding: 16px 0;
-  padding-left: 44px;
+  padding: 16px 12px 16px 48px;
+  margin: 0 -12px;
   position: relative;
   border-bottom: 1px solid var(--color-border);
-  transition: background var(--transition);
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  transition: background var(--transition), border-left-color var(--transition), transform var(--transition), box-shadow var(--transition);
   counter-increment: pub-num -1;
 }
 
 .pub-item::before {
   content: counter(pub-num) ".";
   position: absolute;
-  left: 0;
+  left: 12px;
   top: 16px;
   font-size: 0.88rem;
   font-weight: 600;
   color: var(--color-text-light);
   min-width: 36px;
+  transition: color var(--transition);
 }
 
 .pub-item:last-child {
@@ -756,13 +759,13 @@ h1, h2, h3, h4, h5, h6 {
 
 .pub-item:hover {
   background: var(--color-bg-alt);
-  margin: 0 -12px;
-  padding: 16px 12px 16px 56px;
-  border-radius: 8px;
+  border-left-color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }
 
 .pub-item:hover::before {
-  left: 12px;
+  color: var(--color-primary);
 }
 
 .pub-title {
@@ -861,7 +864,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-text);
   font-size: 0.95rem;
   line-height: 1.8;
-  max-width: 540px;
+  max-width: 54ch;
 }
 
 @media (max-width: 900px) {
@@ -877,8 +880,8 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ===== RESEARCH PAGE ===== */
 .research-detail {
-  margin-bottom: 48px;
-  padding-bottom: 48px;
+  margin-bottom: 56px;
+  padding-bottom: 56px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -912,15 +915,15 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 1rem;
   line-height: 1.8;
   color: var(--color-text);
-  max-width: 800px;
+  max-width: 70ch;
 }
 
 .research-overview {
   font-size: 1.15rem;
   line-height: 1.8;
   color: var(--color-text);
-  max-width: 800px;
-  margin-bottom: 48px;
+  max-width: 68ch;
+  margin-bottom: 56px;
 }
 
 /* ===== RESEARCH ROW (text + carousel side by side) ===== */
@@ -1257,7 +1260,7 @@ a.research-more:hover {
 .page-header p {
   color: var(--color-text-light);
   font-size: 1.05rem;
-  max-width: 640px;
+  max-width: 62ch;
 }
 
 /* ===== BACK TO TOP ===== */
