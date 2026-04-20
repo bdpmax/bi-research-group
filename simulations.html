@@ -3,14 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Links | Bi Research Group</title>
-  <meta name="description" content="Affiliated programs and resources for the Bi Research Group: Northeastern Physics, CTBP, the Biophysics PhD program, and Physics of Living Systems.">
-  <link rel="canonical" href="https://dapengbi.com/links.html">
+  <title>Simulation Demos | Bi Research Group</title>
+  <meta name="description" content="Interactive browser-based simulations from Bi Research Group papers — hands-on demonstrations of active matter, vertex models, cell jamming, and tissue mechanics.">
+  <link rel="canonical" href="https://dapengbi.com/simulations.html">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
   <link rel="stylesheet" href="css/style.css">
+  <style>
+    .sim-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(340px, 1fr));
+      gap:28px;
+    }
+    .sim-card{
+      display:flex; flex-direction:column;
+      background:#fff;
+      border:1px solid var(--color-border);
+      border-radius:12px;
+      overflow:hidden;
+      text-decoration:none;
+      color:var(--color-text);
+      transition:transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+    }
+    .sim-card:hover{
+      transform:translateY(-3px);
+      box-shadow:0 10px 28px rgba(0,0,0,0.07);
+      border-color:rgba(200,16,46,0.3);
+    }
+    .sim-card-image{
+      aspect-ratio: 16 / 9;
+      background:var(--color-bg-alt);
+      overflow:hidden;
+      border-bottom:1px solid var(--color-border);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .sim-card-image img{
+      max-width:100%; max-height:100%;
+      width:auto; height:auto;
+      object-fit:contain;
+      display:block;
+      transition:transform 0.4s ease;
+    }
+    .sim-card:hover .sim-card-image img{ transform:scale(1.03); }
+    .sim-card-body{ padding:22px 24px; display:flex; flex-direction:column; gap:10px; }
+    .sim-card-body h3{
+      font-family:var(--font-heading);
+      font-size:1.15rem;
+      color:var(--color-dark);
+    }
+    .sim-card-meta{
+      font-size:0.82rem;
+      color:var(--color-text-light);
+    }
+    .sim-card-meta em{ font-style:italic; }
+    .sim-card-body p{
+      font-size:0.9rem;
+      color:var(--color-text);
+      line-height:1.6;
+    }
+    .sim-card-cta{
+      margin-top:4px;
+      font-weight:600;
+      color:var(--color-primary);
+      font-size:0.88rem;
+    }
+    .sim-card:hover .sim-card-cta{ color:var(--color-primary-dark); }
+  </style>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-F7VGJ4LSJ6"></script>
   <script>
@@ -33,34 +93,33 @@
         <li><a href="research.html">Research</a></li>
         <li><a href="people.html">People</a></li>
         <li><a href="publications.html">Publications</a></li>
-        <li><a href="simulations.html">Simulations</a></li>
-        <li><a href="links.html" class="active">Links</a></li>
+        <li><a href="simulations.html" class="active">Simulations</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="page-header">
     <div class="container">
-      <h1>Links</h1>
+      <h1>Simulation Demos</h1>
+      <p>Interactive browser-based simulations accompanying our papers.</p>
     </div>
   </header>
 
-  <section class="section" style="padding-top:32px">
+  <section class="section">
     <div class="container">
-      <div class="contact-grid">
+      <div class="sim-grid">
 
-        <div class="contact-block">
-          <h3>Affiliated Programs</h3>
-          <ul>
-            <li><a href="https://cos.northeastern.edu/physics/" target="_blank" rel="noopener">Department of Physics, Northeastern University</a></li>
-            <li><a href="https://biophysics.sites.northeastern.edu/" target="_blank" rel="noopener">Physics of Living Systems at Northeastern</a></li>
-            <li><a href="https://cos.northeastern.edu/biophysics-phd/" target="_blank" rel="noopener">Biophysics PhD Program</a></li>
-              <li><a href="https://ctbp.northeastern.edu/" target="_blank" rel="noopener">CTBP @ Northeastern</a></li>
-              <li><a href="https://ctbp.rice.edu/" target="_blank" rel="noopener">CTBP @ Rice</a></li>
-            <li><a href="https://ctbp.northeastern.edu/" target="_blank" rel="noopener">Center for Theoretical Biological Physics | Northeastern University</a></li>
-            <li><a href="https://ctbp.rice.edu/" target="_blank" rel="noopener">Center for Theoretical Biological Physics | Rice University</a></li>
-          </ul>
-        </div>
+        <a href="paper_simulation_demos/spv_model/index.html" class="sim-card" target="_blank" rel="noopener">
+          <div class="sim-card-image">
+            <img src="paper_simulation_demos/spv_model/spv.png" alt="Self-Propelled Voronoi Model — interactive simulation preview" loading="lazy">
+          </div>
+          <div class="sim-card-body">
+            <h3>Self-Propelled Voronoi Model</h3>
+            <p class="sim-card-meta">Bi, Yang, Marchetti, Manning &mdash; <em>Phys. Rev. X</em> <strong>6</strong>, 021011 (2016)</p>
+            <p>A browser-based simulation of a confluent 2D tissue modeled as self-propelled Voronoi cells. Sweep the target shape index p₀, motile speed v₀, and rotational noise Dᵣ across the rigidity transition, and watch cell shapes, polarities, and shape-index distributions respond in real time.</p>
+            <span class="sim-card-cta">Launch demo &rarr;</span>
+          </div>
+        </a>
 
       </div>
     </div>

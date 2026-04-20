@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Self-Propelled Voronoi Model — Bi et al. PRX 2016</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+    :root{
+      --color-primary:#c8102e;
+      --color-primary-soft:rgba(200,16,46,0.08);
+      --color-dark:#1a1a2e;
+      --color-text:#2d2d3a;
+      --color-text-light:#5a5a6e;
+      --color-bg:#fafaf8;
+      --color-bg-alt:#f3f3ee;
+      --color-bg-warm:#faf9f7;
+      --color-surface:#ffffff;
+      --color-border:#e4e4dc;
+      --color-accent:#0d47a1;
+      --color-fluid:#c8102e;
+      --color-solid:#0d47a1;
+      --color-critical:#b07a1a;
+      --font-heading:'Source Serif 4','Georgia',serif;
+      --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      --font-mono:'JetBrains Mono','Fira Code',monospace;
+    }
+    html, body { width:100%; height:100%; }
+    body{
+      font-family:var(--font-body);
+      color:var(--color-text);
+      background:var(--color-bg);
+      -webkit-font-smoothing:antialiased;
+      line-height:1.55;
+      overflow:hidden;
+    }
+
+    #app{ display:flex; width:100vw; height:100vh; }
+    #stage{ flex:1; position:relative; min-width:0; background:var(--color-bg); }
+    #cvs{ width:100%; height:100%; display:block; }
+
+    /* ── Header overlay on canvas ── */
+    #topbar{
+      position:absolute; top:0; left:0; right:0;
+      display:flex; align-items:center; gap:14px;
+      padding:14px 20px;
+      background:linear-gradient(180deg, rgba(250,250,248,0.96) 0%, rgba(250,250,248,0) 100%);
+      pointer-events:none;
+      z-index:2;
+    }
+    #topbar svg{ flex-shrink:0; }
+    #topbar h1{
+      font-family:var(--font-heading);
+      font-size:1.05rem;
+      font-weight:700;
+      color:var(--color-dark);
+      letter-spacing:-0.01em;
+    }
+    #topbar .sub{
+      font-size:0.78rem;
+      color:var(--color-text-light);
+      font-family:var(--font-body);
+      margin-top:2px;
+    }
+    #topbar .sub em { color:var(--color-primary); font-style:normal; font-weight:600; }
+
+    #fps-el{
+      position:absolute; top:14px; right:16px;
+      font-family:var(--font-mono); font-size:0.7rem;
+      color:var(--color-text-light);
+      pointer-events:none; z-index:2;
+    }
+
+    /* ── Stats overlay (bottom-left) ── */
+    #stats{
+      position:absolute; bottom:14px; left:14px;
+      display:grid; grid-template-columns:auto auto;
+      gap:4px 14px;
+      font-family:var(--font-mono); font-size:0.72rem;
+      background:rgba(255,255,255,0.9);
+      padding:9px 14px;
+      border-radius:6px;
+      border:1px solid var(--color-border);
+      pointer-events:none;
+      box-shadow:0 2px 10px rgba(0,0,0,0.04);
+    }
+    .sl{ color:var(--color-text-light); white-space:nowrap; }
+    .sv{ color:var(--color-dark); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+    /* ── Phase badge (bottom-right) ── */
+    #badge{
+      position:absolute; bottom:14px; right:14px;
+      font-family:var(--font-mono); font-size:0.72rem;
+      font-weight:700;
+      padding:7px 14px;
+      border-radius:6px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      transition:background 0.4s, color 0.4s, border-color 0.4s;
+      box-shadow:0 2px 10px rgba(0,0,0,0.04);
+    }
+    .ph-fluid  { background:rgba(200,16,46,0.08);  color:var(--color-fluid);  border:1px solid rgba(200,16,46,0.3); }
+    .ph-solid  { background:rgba(13,71,161,0.08);  color:var(--color-solid);  border:1px solid rgba(13,71,161,0.3); }
+    .ph-mixed  { background:rgba(176,122,26,0.08); color:var(--color-critical); border:1px solid rgba(176,122,26,0.3); }
+
+    /* ── Side panel ── */
+    #panel{
+      width:320px; flex-shrink:0;
+      background:var(--color-surface);
+      border-left:1px solid var(--color-border);
+      display:flex; flex-direction:column;
+      overflow-y:auto;
+    }
+    .ps{ padding:18px 20px; border-bottom:1px solid var(--color-border); }
+    .ps:last-child{ border-bottom:none; }
+    .st{
+      font-family:var(--font-body);
+      font-size:0.66rem;
+      font-weight:700;
+      letter-spacing:0.12em;
+      text-transform:uppercase;
+      color:var(--color-text-light);
+      margin-bottom:14px;
+    }
+
+    .intro p{
+      font-size:0.84rem;
+      color:var(--color-text);
+      margin-bottom:10px;
+      line-height:1.6;
+    }
+    .intro p:last-child{ margin-bottom:0; }
+    .intro code{
+      font-family:var(--font-mono);
+      font-size:0.78rem;
+      color:var(--color-primary);
+      background:var(--color-primary-soft);
+      padding:1px 5px;
+      border-radius:3px;
+    }
+
+    /* Parameter row */
+    .pr{ margin-bottom:16px; }
+    .pr:last-child{ margin-bottom:0; }
+    .ph{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:10px; }
+    .pn{
+      font-family:var(--font-body);
+      font-size:0.82rem;
+      font-weight:600;
+      color:var(--color-dark);
+    }
+    .pn .sym{ font-family:var(--font-mono); color:var(--color-primary); margin-right:4px; }
+    .pd{
+      font-size:0.72rem;
+      color:var(--color-text-light);
+      margin-top:2px;
+      line-height:1.4;
+    }
+    .pv{
+      font-family:var(--font-mono);
+      font-size:0.84rem;
+      font-weight:700;
+      color:var(--color-dark);
+      font-variant-numeric:tabular-nums;
+    }
+    input[type=range]{
+      -webkit-appearance:none; appearance:none;
+      width:100%; height:4px;
+      background:var(--color-border);
+      border-radius:2px;
+      outline:none;
+      cursor:pointer;
+    }
+    input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;
+      width:14px; height:14px;
+      border-radius:50%;
+      background:var(--color-primary);
+      cursor:pointer;
+      transition:transform 0.15s;
+      box-shadow:0 0 0 3px rgba(200,16,46,0.15);
+    }
+    input[type=range]::-webkit-slider-thumb:active{ transform:scale(1.25); }
+    input[type=range]::-moz-range-thumb{
+      width:14px; height:14px;
+      border:none;
+      border-radius:50%;
+      background:var(--color-primary);
+      cursor:pointer;
+    }
+
+    #smeter{
+      height:6px;
+      background:linear-gradient(90deg, var(--color-solid) 0%, #c9cdd4 50%, var(--color-fluid) 100%);
+      border-radius:3px;
+      margin-top:9px;
+      position:relative;
+      overflow:visible;
+    }
+    #scrit{
+      position:absolute;
+      top:-3px; bottom:-3px;
+      width:2px;
+      background:var(--color-dark);
+      border-radius:1px;
+    }
+    #scrit::after{
+      content:'p₀* = 3.813';
+      position:absolute;
+      top:-16px;
+      left:50%; transform:translateX(-50%);
+      font-family:var(--font-mono);
+      font-size:0.62rem;
+      color:var(--color-text-light);
+      white-space:nowrap;
+    }
+    #smark{
+      position:absolute;
+      top:-3px; bottom:-3px;
+      width:3px;
+      background:var(--color-dark);
+      border-radius:1.5px;
+      transition:left 0.15s;
+    }
+
+    /* Chips (presets) */
+    .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+    .chip{
+      padding:6px 11px;
+      border-radius:6px;
+      border:1px solid var(--color-border);
+      background:var(--color-bg-alt);
+      font-size:0.74rem;
+      font-family:var(--font-body);
+      font-weight:500;
+      color:var(--color-text);
+      cursor:pointer;
+      transition:all 0.15s;
+    }
+    .chip:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .chip.on{
+      background:var(--color-primary-soft);
+      border-color:var(--color-primary);
+      color:var(--color-primary);
+      font-weight:600;
+    }
+
+    /* Number buttons */
+    .nbr{ display:flex; gap:6px; }
+    .nb{
+      flex:1;
+      padding:7px 0;
+      border:1px solid var(--color-border);
+      border-radius:5px;
+      background:var(--color-bg-alt);
+      color:var(--color-text);
+      font-size:0.78rem;
+      font-family:var(--font-mono);
+      font-weight:600;
+      cursor:pointer;
+      transition:all 0.15s;
+    }
+    .nb:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .nb.on{ background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); }
+
+    /* Toggle switch */
+    .tog-r{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .tog-r:last-child{ margin-bottom:0; }
+    .tog-l{ font-size:0.82rem; flex:1; color:var(--color-text); }
+    .tog{ position:relative; width:34px; height:19px; cursor:pointer; flex-shrink:0; }
+    .tog input{ opacity:0; width:0; height:0; }
+    .tog-t{ position:absolute; inset:0; background:var(--color-border); border-radius:10px; transition:background 0.2s; }
+    .tog-k{ position:absolute; top:3px; left:3px; width:13px; height:13px; background:#fff; border-radius:50%; transition:transform 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.15); }
+    .tog input:checked + .tog-t{ background:var(--color-primary); }
+    .tog input:checked ~ .tog-k{ transform:translateX(15px); }
+
+    /* Mode chips (small) */
+    .mr{ display:flex; gap:5px; flex-wrap:wrap; }
+    .mc{
+      padding:5px 10px;
+      border-radius:4px;
+      border:1px solid var(--color-border);
+      background:var(--color-bg-alt);
+      font-size:0.72rem;
+      font-family:var(--font-mono);
+      color:var(--color-text-light);
+      cursor:pointer;
+      transition:all 0.15s;
+    }
+    .mc:hover{ color:var(--color-dark); }
+    .mc.on{ background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); font-weight:600; }
+
+    /* Buttons */
+    .br{ display:flex; gap:8px; }
+    .btn{
+      flex:1;
+      padding:9px 0;
+      border:1px solid var(--color-border);
+      border-radius:5px;
+      background:var(--color-bg-alt);
+      color:var(--color-text);
+      font-size:0.8rem;
+      font-family:var(--font-body);
+      font-weight:600;
+      cursor:pointer;
+      transition:all 0.15s;
+    }
+    .btn:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .btn.on{ background:var(--color-primary); border-color:var(--color-primary); color:#fff; }
+    .btn.on:hover{ background:var(--color-primary); color:#fff; opacity:0.9; }
+
+    /* Histogram */
+    #hist-wrap{ position:relative; width:100%; height:110px; }
+    #hist-cvs{
+      width:100%; height:100%; display:block;
+      border-radius:5px;
+      background:var(--color-bg-alt);
+      border:1px solid var(--color-border);
+    }
+    #hist-tip{
+      position:absolute; top:5px; right:7px;
+      font-family:var(--font-mono); font-size:0.62rem;
+      color:var(--color-text-light);
+      pointer-events:none;
+    }
+
+    /* MSD chart */
+    #msd-wrap{ position:relative; width:100%; }
+    #msd-cvs{
+      width:100%; height:150px; display:block;
+      border-radius:5px;
+      background:var(--color-bg-alt);
+      border:1px solid var(--color-border);
+    }
+    #msd-tip{
+      position:absolute; top:5px; right:7px;
+      font-family:var(--font-mono); font-size:0.62rem;
+      color:var(--color-text-light);
+      pointer-events:none;
+    }
+
+    /* Reference */
+    .cite{
+      font-size:0.74rem;
+      color:var(--color-text-light);
+      line-height:1.6;
+    }
+    .cite a{ color:var(--color-accent); text-decoration:none; }
+    .cite a:hover{ color:var(--color-primary); text-decoration:underline; }
+    .cite em { font-style:italic; }
+    .eq{
+      font-family:var(--font-mono);
+      font-size:0.72rem;
+      color:var(--color-dark);
+      background:var(--color-bg-alt);
+      padding:8px 10px;
+      border-radius:4px;
+      margin:8px 0;
+      line-height:1.5;
+      border-left:3px solid var(--color-primary);
+    }
+
+    /* Scrollbar */
+    #panel::-webkit-scrollbar{ width:6px; }
+    #panel::-webkit-scrollbar-track{ background:transparent; }
+    #panel::-webkit-scrollbar-thumb{ background:var(--color-border); border-radius:3px; }
+    #panel::-webkit-scrollbar-thumb:hover{ background:var(--color-text-light); }
+
+    /* ── Responsive: stack panel below canvas on narrow ── */
+    @media (max-width: 860px) {
+      body { overflow:auto; }
+      #app{ flex-direction:column; height:auto; min-height:100vh; }
+      #stage{ height:60vh; min-height:360px; }
+      #panel{
+        width:100%;
+        border-left:none;
+        border-top:1px solid var(--color-border);
+        max-height:none; overflow-y:visible;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="cvs"></canvas>
+    <div id="topbar">
+      <svg width="28" height="28" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <polygon points="10,2 18,6 18,14 10,18 2,14 2,6" stroke="#c8102e" stroke-width="1.2" fill="none"/>
+        <polygon points="10,6 14,8 14,12 10,14 6,12 6,8" fill="rgba(200,16,46,0.15)" stroke="#c8102e" stroke-width="0.8"/>
+        <circle cx="10" cy="10" r="1.6" fill="#c8102e"/>
+      </svg>
+      <div>
+        <h1>Self-Propelled Voronoi Model</h1>
+        <div class="sub">Bi, Yang, Marchetti, Manning &nbsp;&middot;&nbsp; <em>Phys. Rev. X</em> 6, 021011 (2016)</div>
+      </div>
+    </div>
+    <div id="fps-el">-- fps</div>
+    <div id="stats">
+      <span class="sl">⟨q⟩</span>    <span class="sv" id="sq">—</span>
+      <span class="sl">D_eff</span>  <span class="sv" id="sd">—</span>
+      <span class="sl">⟨|v|⟩</span>  <span class="sv" id="ss">—</span>
+      <span class="sl">steps</span>  <span class="sv" id="sn">0</span>
+    </div>
+    <div id="badge" class="ph-mixed">Equilibrating</div>
+  </div>
+
+  <div id="panel">
+
+    <div class="ps intro">
+      <div class="st">About this model</div>
+      <p>A confluent 2D tissue, where each cell is a Voronoi region around a self-propelled particle. The energy <code>E = Σ [Kₐ(A−A₀)² + Kₚ(P−P₀)²]</code> penalizes deviations in cell area and perimeter from target values.</p>
+      <p>The <strong>dimensionless target shape index</strong> <code>p₀ = P₀/√A₀</code> controls rigidity: below <code>p₀* ≈ 3.813</code> the tissue is a jammed solid; above, a fluid that flows via T1 rearrangements. Self-propulsion <code>v₀</code> and rotational noise <code>Dᵣ</code> add active dynamics.</p>
+    </div>
+
+    <div class="ps">
+      <div class="st">Model Parameters</div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">p₀</span>target shape index</div>
+            <div class="pd">P₀ / √A₀  —  jamming transition at p₀* ≈ 3.813</div>
+          </div>
+          <span class="pv" id="vp0">3.80</span>
+        </div>
+        <input type="range" id="sl-p0" min="3.50" max="4.00" step="0.01" value="3.80"/>
+        <div id="smeter"><div id="scrit"></div><div id="smark"></div></div>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">v₀</span>self-propulsion speed</div>
+            <div class="pd">Magnitude of active motility force per cell</div>
+          </div>
+          <span class="pv" id="vv0">0.05</span>
+        </div>
+        <input type="range" id="sl-v0" min="0.00" max="0.50" step="0.005" value="0.05"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">Dᵣ</span>rotational noise</div>
+            <div class="pd">Polarity diffusion — persistence time τ = 1/Dᵣ</div>
+          </div>
+          <span class="pv" id="vdr">1.00</span>
+        </div>
+        <input type="range" id="sl-dr" min="0.01" max="5.00" step="0.01" value="1.00"/>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Phase Presets</div>
+      <div class="chips">
+        <div class="chip"    data-p0="3.60" data-v0="0.00" data-dr="1.00">Passive solid</div>
+        <div class="chip"    data-p0="3.95" data-v0="0.00" data-dr="1.00">Passive fluid</div>
+        <div class="chip on" data-p0="3.80" data-v0="0.05" data-dr="1.00">Near jamming</div>
+        <div class="chip"    data-p0="3.75" data-v0="0.20" data-dr="1.00">Active fluid</div>
+        <div class="chip"    data-p0="3.70" data-v0="0.10" data-dr="0.05">Persistent (low Dᵣ)</div>
+        <div class="chip"    data-p0="3.70" data-v0="0.10" data-dr="5.00">Noisy (high Dᵣ)</div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Simulation</div>
+      <div class="pr">
+        <div class="pn" style="margin-bottom:6px;">N cells</div>
+        <div class="nbr">
+          <button class="nb"    data-n="36">36</button>
+          <button class="nb on" data-n="64">64</button>
+          <button class="nb"    data-n="100">100</button>
+          <button class="nb"    data-n="144">144</button>
+        </div>
+      </div>
+      <div class="pr">
+        <div class="pn">Steps / frame: <span id="vspd" style="font-family:var(--font-mono);color:var(--color-primary);">4</span></div>
+        <input type="range" id="sl-spd" min="1" max="20" step="1" value="4" style="margin-top:6px;"/>
+      </div>
+      <div class="br" style="margin-top:10px;">
+        <button class="btn on" id="btn-pause">Pause</button>
+        <button class="btn"    id="btn-reset">Reset</button>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Visualization</div>
+      <div class="tog-r">
+        <span class="tog-l">Voronoi edges</span>
+        <label class="tog"><input type="checkbox" id="te" checked/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Cell centres</span>
+        <label class="tog"><input type="checkbox" id="tc"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Polarity arrows</span>
+        <label class="tog"><input type="checkbox" id="ta" checked/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Displacement trails</span>
+        <label class="tog"><input type="checkbox" id="tt"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div style="margin-top:12px; margin-bottom:6px; font-size:0.78rem; color:var(--color-text-light); font-weight:500;">Color cells by</div>
+      <div class="mr">
+        <div class="mc on" data-m="shape">shape index q</div>
+        <div class="mc" data-m="speed">speed</div>
+        <div class="mc" data-m="polarity">polarity</div>
+        <div class="mc" data-m="sides">neighbours</div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Shape-Index Distribution</div>
+      <div id="hist-wrap">
+        <canvas id="hist-cvs"></canvas>
+        <div id="hist-tip">p₀* = 3.813</div>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.66rem; font-family:var(--font-mono); color:var(--color-text-light);">
+        <span>3.4</span><span>q = P/√A</span><span>4.6</span>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">MSD(t) — log-log</div>
+      <div class="tog-r" style="margin-bottom:0;">
+        <span class="tog-l">Record &amp; plot MSD</span>
+        <label class="tog"><input type="checkbox" id="tm"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div id="msd-wrap" style="display:none; margin-top:12px;">
+        <canvas id="msd-cvs"></canvas>
+        <div id="msd-tip"></div>
+        <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.66rem; font-family:var(--font-mono); color:var(--color-text-light);">
+          <span>t (log)</span><span>slope 1 = diffusive</span><span>⟨Δr²⟩ (log)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">References</div>
+      <div class="cite">
+        <p style="margin-bottom:10px;">Bi, D., Yang, X., Marchetti, M. C., Manning, M. L. <em>Motility-Driven Glass and Jamming Transitions in Biological Tissues.</em> <a href="https://doi.org/10.1103/PhysRevX.6.021011" target="_blank" rel="noopener">Phys. Rev. X <strong>6</strong>, 021011 (2016)</a>.</p>
+        <p>Sussman, D. M. <em>cellGPU: Massively parallel simulations of dynamic vertex models.</em> <a href="https://doi.org/10.1016/j.cpc.2017.06.001" target="_blank" rel="noopener">Computer Physics Communications <strong>219</strong>, 400–406 (2017)</a>. &nbsp;[<a href="https://github.com/sussmanLab/cellGPU" target="_blank" rel="noopener">GitHub</a>]</p>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Disclaimer</div>
+      <div class="cite" style="font-style:italic;">
+        This demo was developed with assistance from AI coding tools. Scientific accuracy is not guaranteed — treat results as illustrative, not authoritative, and consult the cited references (and <a href="https://github.com/sussmanLab/cellGPU" target="_blank" rel="noopener">cellGPU</a>) for production simulations.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+// ══════════════════════════════════════════════════════════════
+//  Self-Propelled Voronoi — main thread
+//  Physics runs in physics.worker.js (d3-delaunay + cellGPU forces)
+// ══════════════════════════════════════════════════════════════
+
+// ── Controls / view state (main-thread only) ──
+const P = { N: 64, p0: 3.80, v0: 0.05, Dr: 1.00, spf: 4 };
+let running   = true;
+let vizMode   = 'shape';
+let showEdges = true, showCenters = false, showArrows = true, showTrails = false;
+let msdMode   = false;
+let trails    = [];
+
+// Latest state snapshot from the worker
+let state = {
+  rx: [], ry: [], th: [], spd: [],
+  areas: [], peris: [], voroVerts: null,
+  stepCount: 0, Deff: null, msdSamples: null,
+};
+
+// ── Canvas ────────────────────────────────────────────────────
+const canvas = document.getElementById('cvs');
+const ctx    = canvas.getContext('2d');
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth;
+  const h = canvas.parentElement.clientHeight;
+  canvas.width  = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Web Worker ────────────────────────────────────────────────
+const worker = new Worker('physics.worker.js');
+let pending = false;
+
+worker.onerror = (e) => {
+  console.error('Worker error:', e.message, 'at', (e.filename || '?') + ':' + (e.lineno || '?'));
+  const b = document.getElementById('badge');
+  b.textContent = 'Worker failed — see console';
+  b.className = 'ph-solid';
+  pending = false;
+};
+worker.onmessageerror = (e) => console.error('Worker message error:', e);
+
+worker.onmessage = (ev) => {
+  const m = ev.data;
+  if (m.type !== 'state') return;
+  state = m;
+  if (showTrails) {
+    for (let i = 0; i < P.N; i++) {
+      if (!trails[i]) trails[i] = [];
+      trails[i].push({ x: state.rx[i], y: state.ry[i] });
+      if (trails[i].length > 200) trails[i].shift();
+    }
+  }
+  pending = false;
+};
+
+function workerInit() {
+  pending = true;
+  trails = [];
+  worker.postMessage({ type: 'init', params: { ...P } });
+}
+function workerSetParams() {
+  worker.postMessage({ type: 'setParams', params: { ...P } });
+}
+function workerStep() {
+  if (pending) return;
+  pending = true;
+  worker.postMessage({ type: 'step', nSteps: P.spf });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RENDERING (light theme)
+// ══════════════════════════════════════════════════════════════
+function lerp3(c1, c2, t) {
+  t = Math.max(0, Math.min(1, t));
+  return `rgb(${~~(c1[0]+(c2[0]-c1[0])*t)},${~~(c1[1]+(c2[1]-c1[1])*t)},${~~(c1[2]+(c2[2]-c1[2])*t)})`;
+}
+const SOLID  = [13, 71, 161];
+const NEUT   = [245, 244, 240];
+const FLUID  = [200, 16, 46];
+const PURPLE = [120, 60, 180];
+
+function shapeColor(q) {
+  const QC = 3.813;
+  if (q < QC) return lerp3(SOLID, NEUT, (q - 3.4) / (QC - 3.4));
+  return lerp3(NEUT, FLUID, (q - QC) / (4.3 - QC));
+}
+function speedColor(sp) { return lerp3(SOLID, FLUID, Math.min(sp / (P.v0*2 + 0.01), 1)); }
+function polarColor(a) {
+  const t = (((a % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI)) / (2*Math.PI);
+  return t < 0.5 ? lerp3(SOLID, FLUID, t*2) : lerp3(FLUID, PURPLE, (t - 0.5) * 2);
+}
+function sidesColor(n) { return lerp3(SOLID, FLUID, Math.max(0, Math.min(1, (n - 4) / 4))); }
+
+function render() {
+  const W = canvas.parentElement.clientWidth;
+  const H = canvas.parentElement.clientHeight;
+  const S = Math.min(W, H);
+  const ox = (W - S) * 0.5;
+  const oy = (H - S) * 0.5;
+  const N  = P.N;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fafaf8';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(ox, oy, S, S); ctx.clip();
+  const tx = x => ox + x * S;
+  const ty = y => oy + y * S;
+
+  const vv = state.voroVerts;
+  const rx = state.rx, ry = state.ry, th = state.th, spd = state.spd;
+  const areas = state.areas, peris = state.peris;
+  if (!vv) { ctx.restore(); return; }
+
+  for (let i = 0; i < N; i++) {
+    const cv = vv[i];
+    if (!cv || cv.length < 3) continue;
+    const qi = areas[i] > 0 ? peris[i] / Math.sqrt(areas[i]) : 3.81;
+    let color;
+    switch (vizMode) {
+      case 'shape':    color = shapeColor(qi); break;
+      case 'speed':    color = speedColor(spd[i]); break;
+      case 'polarity': color = polarColor(th[i]); break;
+      default:         color = sidesColor(cv.length); break;
+    }
+    const fc = color.replace('rgb', 'rgba').replace(')', ',0.50)');
+
+    const cxi = rx[i], cyi = ry[i];
+    const copies = [[0,0]];
+    if (cxi < 0.15) copies.push([1, 0]);
+    if (cxi > 0.85) copies.push([-1, 0]);
+    if (cyi < 0.15) copies.push([0, 1]);
+    if (cyi > 0.85) copies.push([0, -1]);
+    if (cxi < 0.15 && cyi < 0.15) copies.push([1, 1]);
+    if (cxi > 0.85 && cyi < 0.15) copies.push([-1, 1]);
+    if (cxi < 0.15 && cyi > 0.85) copies.push([1, -1]);
+    if (cxi > 0.85 && cyi > 0.85) copies.push([-1, -1]);
+
+    for (const [ddx, ddy] of copies) {
+      ctx.beginPath();
+      ctx.moveTo(tx(cv[0].x + ddx), ty(cv[0].y + ddy));
+      for (let k = 1; k < cv.length; k++) ctx.lineTo(tx(cv[k].x + ddx), ty(cv[k].y + ddy));
+      ctx.closePath();
+      ctx.fillStyle = fc; ctx.fill();
+      if (showEdges) {
+        ctx.strokeStyle = 'rgba(26,26,46,0.35)';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+      }
+    }
+
+    if (showTrails && trails[i] && trails[i].length > 1) {
+      ctx.beginPath();
+      let prev = trails[i][0];
+      ctx.moveTo(tx(prev.x), ty(prev.y));
+      for (let k = 1; k < trails[i].length; k++) {
+        const pt = trails[i][k];
+        if (Math.abs(pt.x - prev.x) > 0.5 || Math.abs(pt.y - prev.y) > 0.5) {
+          ctx.moveTo(tx(pt.x), ty(pt.y));
+        } else {
+          ctx.lineTo(tx(pt.x), ty(pt.y));
+        }
+        prev = pt;
+      }
+      ctx.strokeStyle = color.replace('rgb','rgba').replace(')', ',0.35)');
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+    }
+
+    if (showArrows && P.v0 > 1e-3) {
+      const ax = tx(rx[i]);
+      const ay = ty(ry[i]);
+      const al = S * 0.018;
+      const nx = Math.cos(th[i]);
+      const ny = Math.sin(th[i]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax+nx*al, ay+ny*al);
+      ctx.strokeStyle = 'rgba(26,26,46,0.85)';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      const hw = 3, ang = th[i];
+      ctx.beginPath();
+      ctx.moveTo(ax+nx*al, ay+ny*al);
+      ctx.lineTo(ax+nx*al - hw*Math.cos(ang-0.5), ay+ny*al - hw*Math.sin(ang-0.5));
+      ctx.lineTo(ax+nx*al - hw*Math.cos(ang+0.5), ay+ny*al - hw*Math.sin(ang+0.5));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(26,26,46,0.85)';
+      ctx.fill();
+    }
+
+    if (showCenters) {
+      ctx.beginPath();
+      ctx.arc(tx(rx[i]), ty(ry[i]), 2.1, 0, 2*Math.PI);
+      ctx.fillStyle = 'rgba(26,26,46,0.6)';
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(200,16,46,0.25)';
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(ox, oy, S, S);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  STATS & PHASE BADGE (from worker snapshot)
+// ══════════════════════════════════════════════════════════════
+function updateStats() {
+  const areas = state.areas, peris = state.peris, spd = state.spd;
+  const N = P.N;
+  if (!areas || areas.length !== N) return;
+  let qS = 0, qN = 0, sS = 0;
+  for (let i = 0; i < N; i++) {
+    if (areas[i] > 0) { qS += peris[i]/Math.sqrt(areas[i]); qN++; }
+    sS += spd[i];
+  }
+  const qM = qN > 0 ? qS/qN : 0;
+  const sM = sS / N;
+
+  document.getElementById('sq').textContent = qM.toFixed(3);
+  document.getElementById('sd').textContent = state.Deff !== null ? state.Deff.toExponential(2) : '…';
+  document.getElementById('ss').textContent = sM.toFixed(4);
+  document.getElementById('sn').textContent = state.stepCount;
+
+  const badge = document.getElementById('badge');
+  const QCRIT = 3.813;
+  if (state.stepCount < 80)           { badge.textContent = 'Equilibrating';    badge.className = 'ph-mixed'; }
+  else if (qM < QCRIT - 0.04)         { badge.textContent = 'Solid — jammed';    badge.className = 'ph-solid'; }
+  else if (qM > QCRIT + 0.04)         { badge.textContent = 'Fluid — unjammed';  badge.className = 'ph-fluid'; }
+  else                                 { badge.textContent = 'Near transition';  badge.className = 'ph-mixed'; }
+
+  drawQHistogram();
+  if (msdMode && state.msdSamples) drawMSDChart(state.msdSamples);
+}
+
+function updateShapeMeter() {
+  const pmin=3.5, pmax=4.0, pcrit=3.813;
+  const f = Math.max(0, Math.min(1, (P.p0 - pmin)/(pmax - pmin)));
+  document.getElementById('smark').style.left = `calc(${(f*100).toFixed(1)}% - 1.5px)`;
+  document.getElementById('scrit').style.left = `calc(${((pcrit-pmin)/(pmax-pmin)*100).toFixed(1)}% - 1px)`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SHAPE-INDEX HISTOGRAM
+// ══════════════════════════════════════════════════════════════
+const hCvs = document.getElementById('hist-cvs');
+const hCtx = hCvs.getContext('2d');
+let hDPR = window.devicePixelRatio || 1;
+function resizeHistCanvas() {
+  const rect = hCvs.getBoundingClientRect();
+  if (!rect.width) return;
+  hCvs.width  = Math.round(rect.width  * hDPR);
+  hCvs.height = Math.round(rect.height * hDPR);
+}
+resizeHistCanvas();
+new ResizeObserver(resizeHistCanvas).observe(hCvs);
+
+const QMIN = 3.4, QMAX = 4.6, QCRIT = 3.813, QBINS = 24;
+function drawQHistogram() {
+  resizeHistCanvas();
+  const areas = state.areas, peris = state.peris;
+  if (!areas || !peris || !areas.length) return;
+  const rect = hCvs.getBoundingClientRect();
+  if (!rect.width) return;
+  const W = rect.width, H = rect.height;
+  hCtx.save();
+  hCtx.setTransform(hDPR, 0, 0, hDPR, 0, 0);
+
+  const binW = (QMAX - QMIN) / QBINS;
+  const counts = new Array(QBINS).fill(0);
+  for (let i = 0; i < areas.length; i++) {
+    if (areas[i] <= 0) continue;
+    const q = peris[i] / Math.sqrt(areas[i]);
+    const b = Math.max(0, Math.min(QBINS - 1, Math.floor((q - QMIN)/binW)));
+    counts[b]++;
+  }
+  const maxC = Math.max(1, ...counts);
+
+  hCtx.clearRect(0, 0, W, H);
+
+  // Grid
+  hCtx.strokeStyle = 'rgba(26,26,46,0.08)';
+  hCtx.lineWidth = 0.5;
+  for (let g = 1; g <= 4; g++) {
+    const gy = H - (g/4) * H;
+    hCtx.beginPath(); hCtx.moveTo(0, gy); hCtx.lineTo(W, gy); hCtx.stroke();
+  }
+
+  // Bars — solid blue below p0*, red above
+  const PAD = 2;
+  const barTW = (W - PAD) / QBINS;
+  for (let b = 0; b < QBINS; b++) {
+    const bh = (counts[b]/maxC) * (H - 4);
+    const bx = PAD + b * barTW;
+    const by = H - bh;
+    const binMid = QMIN + (b + 0.5) * binW;
+    hCtx.fillStyle = binMid < QCRIT
+      ? `rgba(13,71,161,${(0.75 - 0.35 * Math.abs(binMid - QCRIT)/(QCRIT - QMIN)).toFixed(2)})`
+      : `rgba(200,16,46,${(0.75 - 0.35 * Math.abs(binMid - QCRIT)/(QMAX - QCRIT)).toFixed(2)})`;
+    hCtx.fillRect(bx, by, barTW - 1.5, bh);
+  }
+
+  // p0* reference line
+  const critX = PAD + ((QCRIT - QMIN)/(QMAX - QMIN)) * (W - PAD);
+  hCtx.strokeStyle = 'rgba(26,26,46,0.75)';
+  hCtx.lineWidth = 1.2;
+  hCtx.setLineDash([3, 3]);
+  hCtx.beginPath(); hCtx.moveTo(critX, 0); hCtx.lineTo(critX, H); hCtx.stroke();
+  hCtx.setLineDash([]);
+  hCtx.fillStyle = 'rgba(26,26,46,0.8)';
+  hCtx.font = '10px JetBrains Mono, monospace';
+  hCtx.fillText('p₀*', critX + 3, 11);
+  hCtx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MSD(t) LOG-LOG CHART
+// ══════════════════════════════════════════════════════════════
+const mCvs = document.getElementById('msd-cvs');
+const mCtx = mCvs.getContext('2d');
+function resizeMsdCanvas() {
+  const rect = mCvs.getBoundingClientRect();
+  if (!rect.width) return;
+  mCvs.width  = Math.round(rect.width  * hDPR);
+  mCvs.height = Math.round(rect.height * hDPR);
+}
+resizeMsdCanvas();
+new ResizeObserver(resizeMsdCanvas).observe(mCvs);
+
+function drawMSDChart(samples) {
+  resizeMsdCanvas();
+  const rect = mCvs.getBoundingClientRect();
+  if (!rect.width || !samples || samples.length < 2) {
+    mCtx.save();
+    mCtx.setTransform(hDPR, 0, 0, hDPR, 0, 0);
+    mCtx.clearRect(0, 0, rect.width, rect.height);
+    mCtx.fillStyle = 'rgba(90,90,110,0.55)';
+    mCtx.font = '10px JetBrains Mono, monospace';
+    mCtx.fillText('collecting samples…', 8, 18);
+    mCtx.restore();
+    return;
+  }
+  const W = rect.width, H = rect.height;
+  const PAD_L = 32, PAD_R = 10, PAD_T = 10, PAD_B = 22;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  mCtx.save();
+  mCtx.setTransform(hDPR, 0, 0, hDPR, 0, 0);
+  mCtx.clearRect(0, 0, W, H);
+
+  // Log ranges
+  let logTmin =  Infinity, logTmax = -Infinity;
+  let logMmin =  Infinity, logMmax = -Infinity;
+  const pts = [];
+  for (const s of samples) {
+    if (s.t <= 0 || s.msd <= 0) continue;
+    const lt = Math.log10(s.t);
+    const lm = Math.log10(s.msd);
+    pts.push({ lt, lm });
+    if (lt < logTmin) logTmin = lt;
+    if (lt > logTmax) logTmax = lt;
+    if (lm < logMmin) logMmin = lm;
+    if (lm > logMmax) logMmax = lm;
+  }
+  if (pts.length < 2) { mCtx.restore(); return; }
+  // Expand ranges slightly
+  const tSpan = Math.max(0.3, logTmax - logTmin);
+  const mSpan = Math.max(0.6, logMmax - logMmin);
+  logTmin -= 0.05 * tSpan; logTmax += 0.05 * tSpan;
+  logMmin -= 0.15 * mSpan; logMmax += 0.15 * mSpan;
+
+  const tx = lt => PAD_L + ((lt - logTmin)/(logTmax - logTmin)) * plotW;
+  const ty = lm => PAD_T + (1 - (lm - logMmin)/(logMmax - logMmin)) * plotH;
+
+  // Axes
+  mCtx.strokeStyle = 'rgba(26,26,46,0.25)';
+  mCtx.lineWidth = 1;
+  mCtx.beginPath();
+  mCtx.moveTo(PAD_L, PAD_T); mCtx.lineTo(PAD_L, PAD_T + plotH); mCtx.lineTo(PAD_L + plotW, PAD_T + plotH);
+  mCtx.stroke();
+
+  // Decade gridlines (x)
+  mCtx.strokeStyle = 'rgba(26,26,46,0.08)';
+  mCtx.lineWidth = 0.5;
+  mCtx.fillStyle  = 'rgba(90,90,110,0.75)';
+  mCtx.font = '9px JetBrains Mono, monospace';
+  const t0 = Math.ceil(logTmin), t1 = Math.floor(logTmax);
+  for (let d = t0; d <= t1; d++) {
+    const x = tx(d);
+    mCtx.beginPath(); mCtx.moveTo(x, PAD_T); mCtx.lineTo(x, PAD_T + plotH); mCtx.stroke();
+    mCtx.fillText(`10${supscr(d)}`, x - 7, PAD_T + plotH + 13);
+  }
+  // Decade gridlines (y)
+  const m0 = Math.ceil(logMmin), m1 = Math.floor(logMmax);
+  for (let d = m0; d <= m1; d++) {
+    const y = ty(d);
+    mCtx.beginPath(); mCtx.moveTo(PAD_L, y); mCtx.lineTo(PAD_L + plotW, y); mCtx.stroke();
+    mCtx.fillText(`10${supscr(d)}`, 4, y + 3);
+  }
+
+  // Reference slope = 1 line (diffusive ~ t)
+  // Pass through first data point
+  const p0 = pts[0];
+  mCtx.strokeStyle = 'rgba(176,122,26,0.8)';
+  mCtx.lineWidth = 1.1;
+  mCtx.setLineDash([4, 3]);
+  mCtx.beginPath();
+  const refL = logTmin, refR = logTmax;
+  const refB = p0.lm + (refL - p0.lt) * 1.0;
+  const refE = p0.lm + (refR - p0.lt) * 1.0;
+  mCtx.moveTo(tx(refL), ty(refB));
+  mCtx.lineTo(tx(refR), ty(refE));
+  mCtx.stroke();
+  mCtx.setLineDash([]);
+  mCtx.fillStyle = 'rgba(176,122,26,0.85)';
+  mCtx.fillText('slope 1', tx(refR) - 38, ty(refE) - 4);
+
+  // Data line
+  mCtx.strokeStyle = 'rgba(200,16,46,0.9)';
+  mCtx.lineWidth = 1.5;
+  mCtx.beginPath();
+  mCtx.moveTo(tx(pts[0].lt), ty(pts[0].lm));
+  for (let i = 1; i < pts.length; i++) mCtx.lineTo(tx(pts[i].lt), ty(pts[i].lm));
+  mCtx.stroke();
+  // Data points
+  mCtx.fillStyle = 'rgba(200,16,46,0.9)';
+  for (const p of pts) {
+    mCtx.beginPath();
+    mCtx.arc(tx(p.lt), ty(p.lm), 1.8, 0, 2*Math.PI);
+    mCtx.fill();
+  }
+
+  document.getElementById('msd-tip').textContent = `${pts.length} samples`;
+  mCtx.restore();
+}
+function supscr(d) {
+  const m = { '-': '⁻', '0': '⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹' };
+  return String(d).split('').map(c => m[c] || c).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MAIN LOOP
+// ══════════════════════════════════════════════════════════════
+let _fF = 0, _fT = performance.now();
+function loop() {
+  requestAnimationFrame(loop);
+  _fF++;
+  const now = performance.now();
+  if (now - _fT > 500) {
+    document.getElementById('fps-el').textContent = Math.round(_fF*1000/(now-_fT)) + ' fps';
+    _fF = 0; _fT = now;
+  }
+  if (running) workerStep();
+  if (state.voroVerts) {
+    render();
+    updateStats();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  UI WIRING
+// ══════════════════════════════════════════════════════════════
+function bindSlider(id, vid, key, dec) {
+  const sl = document.getElementById(id);
+  const vl = document.getElementById(vid);
+  sl.addEventListener('input', () => {
+    P[key] = parseFloat(sl.value);
+    vl.textContent = P[key].toFixed(dec);
+    if (key === 'p0') updateShapeMeter();
+    workerSetParams();
+  });
+}
+bindSlider('sl-p0', 'vp0', 'p0', 2);
+bindSlider('sl-v0', 'vv0', 'v0', 3);
+bindSlider('sl-dr', 'vdr', 'Dr', 2);
+document.getElementById('sl-spd').addEventListener('input', e => {
+  P.spf = parseInt(e.target.value);
+  document.getElementById('vspd').textContent = e.target.value;
+});
+
+updateShapeMeter();
+
+const pb = document.getElementById('btn-pause');
+pb.addEventListener('click', () => {
+  running = !running;
+  pb.textContent = running ? 'Pause' : 'Resume';
+  pb.classList.toggle('on', running);
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  workerInit();
+});
+
+document.getElementById('te').addEventListener('change', e => showEdges   = e.target.checked);
+document.getElementById('tc').addEventListener('change', e => showCenters = e.target.checked);
+document.getElementById('ta').addEventListener('change', e => showArrows  = e.target.checked);
+document.getElementById('tt').addEventListener('change', e => {
+  showTrails = e.target.checked;
+  if (!showTrails) trails = [];
+});
+
+// MSD toggle
+document.getElementById('tm').addEventListener('change', e => {
+  msdMode = e.target.checked;
+  document.getElementById('msd-wrap').style.display = msdMode ? 'block' : 'none';
+  worker.postMessage({ type: 'setMSDMode', enabled: msdMode });
+});
+
+document.querySelectorAll('.mc').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.mc').forEach(x => x.classList.remove('on'));
+  c.classList.add('on');
+  vizMode = c.dataset.m;
+}));
+
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('on'));
+  c.classList.add('on');
+  P.p0 = parseFloat(c.dataset.p0);
+  P.v0 = parseFloat(c.dataset.v0);
+  P.Dr = parseFloat(c.dataset.dr);
+  document.getElementById('sl-p0').value = P.p0;
+  document.getElementById('sl-v0').value = P.v0;
+  document.getElementById('sl-dr').value = P.Dr;
+  document.getElementById('vp0').textContent = P.p0.toFixed(2);
+  document.getElementById('vv0').textContent = P.v0.toFixed(3);
+  document.getElementById('vdr').textContent = P.Dr.toFixed(2);
+  updateShapeMeter();
+  workerInit();
+}));
+
+document.querySelectorAll('.nb').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  P.N = parseInt(b.dataset.n);
+  workerInit();
+}));
+
+workerInit();
+loop();
+</script>
+</body>
+</html>
