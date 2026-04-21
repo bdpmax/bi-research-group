@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Athermal Quasistatic Sheared Voronoi — Huang et al. PRL 2022 / Nguyen et al. Nat Commun 2025</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+    :root{
+      --color-primary:#c8102e;
+      --color-primary-soft:rgba(200,16,46,0.08);
+      --color-dark:#1a1a2e;
+      --color-text:#2d2d3a;
+      --color-text-light:#5a5a6e;
+      --color-bg:#fafaf8;
+      --color-bg-alt:#f3f3ee;
+      --color-surface:#ffffff;
+      --color-border:#e4e4dc;
+      --color-accent:#0d47a1;
+      --font-heading:'Source Serif 4','Georgia',serif;
+      --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      --font-mono:'JetBrains Mono','Fira Code',monospace;
+    }
+    html, body { width:100%; height:100%; }
+    body{
+      font-family:var(--font-body);
+      color:var(--color-text);
+      background:var(--color-bg);
+      -webkit-font-smoothing:antialiased;
+      line-height:1.55;
+      overflow:hidden;
+    }
+
+    #app{ display:flex; width:100vw; height:100vh; }
+    #stage{ flex:1; position:relative; min-width:0; background:var(--color-bg); }
+    #cell-wrap{ position:absolute; inset:0; }
+    #cvs{ width:100%; height:100%; display:block; }
+
+    /* Stress plot lives inside the right-hand panel now */
+    #stress-wrap{
+      position:relative;
+      width:100%; height:150px;
+      background:var(--color-bg-alt);
+      border-radius:6px;
+      border:1px solid var(--color-border);
+      overflow:hidden;
+    }
+    #stress-cvs{ width:100%; height:100%; display:block; }
+
+    #topbar{
+      position:absolute; top:0; left:0; right:0;
+      display:flex; align-items:center; gap:14px;
+      padding:14px 20px;
+      background:linear-gradient(180deg, rgba(250,250,248,0.96) 0%, rgba(250,250,248,0) 100%);
+      pointer-events:none; z-index:2;
+    }
+    #topbar svg{ flex-shrink:0; }
+    #topbar h1{
+      font-family:var(--font-heading);
+      font-size:1.05rem; font-weight:700;
+      color:var(--color-dark);
+      letter-spacing:-0.01em;
+    }
+    #topbar .sub{ font-size:0.78rem; color:var(--color-text-light); margin-top:2px; }
+    #topbar .sub em{ color:var(--color-primary); font-style:normal; font-weight:600; }
+
+    #fps-el{
+      position:absolute; top:14px; right:16px;
+      font-family:var(--font-mono); font-size:0.7rem;
+      color:var(--color-text-light); pointer-events:none; z-index:2;
+    }
+    #stats{
+      position:absolute; bottom:14px; left:14px;
+      display:grid; grid-template-columns:auto auto;
+      gap:4px 14px;
+      font-family:var(--font-mono); font-size:0.72rem;
+      background:rgba(255,255,255,0.92);
+      padding:9px 14px;
+      border-radius:6px;
+      border:1px solid var(--color-border);
+      pointer-events:none;
+      box-shadow:0 2px 10px rgba(0,0,0,0.04);
+      z-index:1;
+    }
+    .sl{ color:var(--color-text-light); white-space:nowrap; }
+    .sv{ color:var(--color-dark); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+    #panel{
+      width:320px; flex-shrink:0;
+      background:var(--color-surface);
+      border-left:1px solid var(--color-border);
+      display:flex; flex-direction:column;
+      overflow-y:auto;
+    }
+    .ps{ padding:18px 20px; border-bottom:1px solid var(--color-border); }
+    .ps:last-child{ border-bottom:none; }
+    .st{
+      font-family:var(--font-body);
+      font-size:0.66rem; font-weight:700;
+      letter-spacing:0.12em; text-transform:uppercase;
+      color:var(--color-text-light); margin-bottom:14px;
+    }
+    .intro p{ font-size:0.84rem; color:var(--color-text); margin-bottom:10px; line-height:1.6; }
+    .intro p:last-child{ margin-bottom:0; }
+    .intro code{
+      font-family:var(--font-mono); font-size:0.78rem;
+      color:var(--color-primary);
+      background:var(--color-primary-soft);
+      padding:1px 5px; border-radius:3px;
+    }
+
+    .pr{ margin-bottom:16px; } .pr:last-child{ margin-bottom:0; }
+    .ph{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:10px; }
+    .pn{ font-size:0.82rem; font-weight:600; color:var(--color-dark); }
+    .pn .sym{ font-family:var(--font-mono); color:var(--color-primary); margin-right:4px; }
+    .pd{ font-size:0.72rem; color:var(--color-text-light); margin-top:2px; line-height:1.4; }
+    .pv{ font-family:var(--font-mono); font-size:0.84rem; font-weight:700; color:var(--color-dark); font-variant-numeric:tabular-nums; }
+
+    input[type=range]{
+      -webkit-appearance:none; appearance:none;
+      width:100%; height:4px; background:var(--color-border);
+      border-radius:2px; outline:none; cursor:pointer;
+    }
+    input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+      background:var(--color-primary); cursor:pointer;
+      box-shadow:0 0 0 3px rgba(200,16,46,0.15);
+    }
+    input[type=range]::-moz-range-thumb{
+      width:14px; height:14px; border:none; border-radius:50%;
+      background:var(--color-primary); cursor:pointer;
+    }
+
+    .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+    .chip{
+      padding:6px 11px; border-radius:6px;
+      border:1px solid var(--color-border);
+      background:var(--color-bg-alt);
+      font-size:0.74rem; font-weight:500;
+      color:var(--color-text); cursor:pointer;
+      transition:all 0.15s;
+    }
+    .chip:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .chip.on{ background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); font-weight:600; }
+
+    .nbr{ display:flex; gap:6px; }
+    .nb{
+      flex:1; padding:7px 0; border:1px solid var(--color-border);
+      border-radius:5px; background:var(--color-bg-alt);
+      color:var(--color-text); font-size:0.78rem;
+      font-family:var(--font-mono); font-weight:600;
+      cursor:pointer; transition:all 0.15s;
+    }
+    .nb:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .nb.on{ background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); }
+
+    .tog-r{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .tog-r:last-child{ margin-bottom:0; }
+    .tog-l{ font-size:0.82rem; flex:1; color:var(--color-text); }
+    .tog{ position:relative; width:34px; height:19px; cursor:pointer; flex-shrink:0; }
+    .tog input{ opacity:0; width:0; height:0; }
+    .tog-t{ position:absolute; inset:0; background:var(--color-border); border-radius:10px; transition:background 0.2s; }
+    .tog-k{ position:absolute; top:3px; left:3px; width:13px; height:13px; background:#fff; border-radius:50%; transition:transform 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.15); }
+    .tog input:checked + .tog-t{ background:var(--color-primary); }
+    .tog input:checked ~ .tog-k{ transform:translateX(15px); }
+
+    .br{ display:flex; gap:8px; }
+    .btn{
+      flex:1; padding:9px 0; border:1px solid var(--color-border); border-radius:5px;
+      background:var(--color-bg-alt); color:var(--color-text);
+      font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.15s;
+    }
+    .btn:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .btn.on{ background:var(--color-primary); border-color:var(--color-primary); color:#fff; }
+
+    .cite{ font-size:0.74rem; color:var(--color-text-light); line-height:1.6; }
+    .cite a{ color:var(--color-accent); text-decoration:none; }
+    .cite a:hover{ color:var(--color-primary); text-decoration:underline; }
+    .cite em{ font-style:italic; }
+
+    #panel::-webkit-scrollbar{ width:6px; }
+    #panel::-webkit-scrollbar-thumb{ background:var(--color-border); border-radius:3px; }
+
+    @media (max-width: 860px) {
+      body { overflow:auto; }
+      #app{ flex-direction:column; height:auto; min-height:100vh; }
+      #stage{ height:70vh; min-height:400px; }
+      #panel{ width:100%; border-left:none; border-top:1px solid var(--color-border); overflow-y:visible; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="cell-wrap">
+      <canvas id="cvs"></canvas>
+      <div id="topbar">
+        <svg width="28" height="28" viewBox="0 0 26 24" fill="none" aria-hidden="true">
+          <polygon points="4,6 18,6 22,18 8,18" stroke="#c8102e" stroke-width="1.4" fill="rgba(200,16,46,0.10)"/>
+          <line x1="11" y1="6" x2="15" y2="18" stroke="#c8102e" stroke-width="1"/>
+          <line x1="7" y1="12" x2="19" y2="12" stroke="#c8102e" stroke-width="1"/>
+        </svg>
+        <div>
+          <h1>Athermal Quasistatic Sheared Voronoi</h1>
+          <div class="sub">Huang et al. &middot; <em>PRL</em> 128, 178001 (2022)  &#124;  Nguyen et al. &middot; <em>Nat. Commun.</em> 16, 3260 (2025)</div>
+        </div>
+      </div>
+      <div id="fps-el">-- fps</div>
+      <div id="stats">
+        <span class="sl">γ</span>         <span class="sv" id="sg">0.000</span>
+        <span class="sl">σ_xy</span>      <span class="sv" id="sstress">—</span>
+        <span class="sl">E/N</span>       <span class="sv" id="sEN">—</span>
+        <span class="sl">⟨q⟩</span>       <span class="sv" id="sq">—</span>
+        <span class="sl">T1s total</span> <span class="sv" id="st1">0</span>
+        <span class="sl">T1s/Δγ</span>    <span class="sv" id="st1rate">0</span>
+        <span class="sl">FIRE it.</span>  <span class="sv" id="sfi">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel">
+
+    <div class="ps">
+      <div class="st">Stress &sigma;<sub>xy</sub> vs strain &gamma;</div>
+      <div id="stress-wrap">
+        <canvas id="stress-cvs"></canvas>
+      </div>
+    </div>
+
+    <div class="ps intro">
+      <div class="st">About this model</div>
+      <p>Athermal quasistatic simple shear of the 2D Voronoi tissue model under <strong>Lees–Edwards boundaries</strong>. With <code>K_A = 0</code> the energy is perimeter-only: <code>E = Σ K_P (P_i − P_0)²</code>. Default box side <code>L = √N</code> so ⟨A⟩ = A₀ = 1.</p>
+      <p>Each strain step applies an affine shear <code>x → x + Δγ·y</code>, wraps under LEBC, then <strong>FIRE-minimises</strong> to mechanical equilibrium. Shear stress <code>σ_xy</code> is measured from the virial/analytical form <code>(1/L²) Σ_e T_e dx_e dy_e / |e|</code>, which does not spike at T1s. <strong>T1 events</strong> are detected by changes in the Delaunay edge set; the four cells of each T1 quartet <span style="color:var(--color-primary);font-weight:600;">flash red</span> briefly.</p>
+    </div>
+
+    <div class="ps">
+      <div class="st">Model Parameters</div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">p₀</span>target shape index</div>
+            <div class="pd">P₀/√A₀. Jamming transition at p₀* ≈ 3.813</div>
+          </div>
+          <span class="pv" id="vp0">3.78</span>
+        </div>
+        <input type="range" id="sl-p0" min="3.50" max="4.00" step="0.01" value="3.78"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">Δγ</span>strain step</div>
+            <div class="pd">Affine shear applied before each FIRE relax</div>
+          </div>
+          <span class="pv" id="vdg">0.0020</span>
+        </div>
+        <input type="range" id="sl-dg" min="0.0005" max="0.0100" step="0.0005" value="0.0020"/>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Presets</div>
+      <div class="chips">
+        <div class="chip"    data-p0="3.60" data-dg="0.0020" data-n="64">Solid (p₀=3.60)</div>
+        <div class="chip on" data-p0="3.81" data-dg="0.0020" data-n="64">Near-critical (p₀=3.81)</div>
+        <div class="chip"    data-p0="3.90" data-dg="0.0020" data-n="64">Strain-stiffening (p₀=3.90)</div>
+        <div class="chip"    data-p0="4.00" data-dg="0.0020" data-n="64">Fluid (p₀=4.00)</div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Simulation</div>
+      <div class="pr">
+        <div class="pn" style="margin-bottom:6px;">N cells</div>
+        <div class="nbr">
+          <button class="nb"    data-n="36">36</button>
+          <button class="nb on" data-n="64">64</button>
+          <button class="nb"    data-n="100">100</button>
+        </div>
+      </div>
+      <div class="br" style="margin-top:10px;">
+        <button class="btn on" id="btn-pause">Pause</button>
+        <button class="btn"    id="btn-reset">Reset</button>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Visualization</div>
+      <div class="tog-r">
+        <span class="tog-l">Cell edges</span>
+        <label class="tog"><input type="checkbox" id="te" checked/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Cell centres</span>
+        <label class="tog"><input type="checkbox" id="tc"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">T1 flashes</span>
+        <label class="tog"><input type="checkbox" id="tt" checked/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Persistent T1 markers</span>
+        <label class="tog"><input type="checkbox" id="tp"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">References</div>
+      <div class="cite">
+        <p style="margin-bottom:10px;">Huang, J., Cochran, J., Fielding, S., Marchetti, M., &amp; Bi, D. <em>Shear-Driven Solidification and Nonlinear Elasticity in Epithelial Tissues.</em> <a href="https://doi.org/10.1103/PhysRevLett.128.178001" target="_blank" rel="noopener">Phys. Rev. Lett. <strong>128</strong>, 178001 (2022)</a>.</p>
+        <p>Nguyen, A. Q., Huang, J., &amp; Bi, D. <em>Origin of yield stress and mechanical plasticity in model biological tissues.</em> <a href="https://doi.org/10.1038/s41467-025-58526-7" target="_blank" rel="noopener">Nat. Commun. <strong>16</strong>, 3260 (2025)</a>.</p>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Disclaimer</div>
+      <div class="cite" style="font-style:italic;">
+        This demo was developed with assistance from AI coding tools. Forces use the analytical circumcenter-Jacobian chain rule (same as the SPV/Bi 2016 formulation); FIRE is capped at a few hundred iterations for interactive speed, so at strongly nonlinear configurations the relaxation may not reach the tolerance of a batch MATLAB run.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Local view state ──
+const P = { N: 64, p0: 3.78, dGamma: 0.002 };
+let running = true;
+let showEdges = true, showCenters = false, showT1 = true, showT1Persistent = false;
+
+// Latest worker state
+let state = {
+  rx: [], ry: [], voro: null,
+  areas: [], perims: [],
+  gamma: 0, stepCount: 0, L: 1,
+  energy: 0, energyPerCell: 0,
+  stressTrace: [], t1Events: [],
+  fireIters: 0, meanForce: 0,
+};
+let totalT1 = 0;
+let persistentT1 = [];   // all T1s since last reset
+
+const canvas = document.getElementById('cvs');
+const ctx = canvas.getContext('2d');
+const scvs = document.getElementById('stress-cvs');
+const sctx = scvs.getContext('2d');
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const w1 = canvas.parentElement.clientWidth;
+  const h1 = canvas.parentElement.clientHeight;
+  canvas.width  = Math.round(w1 * dpr);
+  canvas.height = Math.round(h1 * dpr);
+  canvas.style.width  = w1 + 'px';
+  canvas.style.height = h1 + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const w2 = scvs.parentElement.clientWidth;
+  const h2 = scvs.parentElement.clientHeight;
+  scvs.width  = Math.round(w2 * dpr);
+  scvs.height = Math.round(h2 * dpr);
+  scvs.style.width  = w2 + 'px';
+  scvs.style.height = h2 + 'px';
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Worker ──
+const worker = new Worker('physics.worker.js');
+let pending = false;
+worker.onerror = (e) => {
+  console.error('Worker error:', e.message, 'at', (e.filename||'?')+':'+(e.lineno||'?'));
+  pending = false;
+};
+worker.onmessage = (ev) => {
+  const m = ev.data;
+  if (m.type !== 'state') return;
+  // Count new T1s since last snapshot
+  const prevCount = state.t1Events ? state.t1Events.length : 0;
+  const newCount = m.t1Events ? m.t1Events.length : 0;
+  // We receive a sliding window (max 40). Instead track totalT1 from
+  // worker snapshots: accumulate by comparing newest event gamma.
+  if (m.t1Events && m.t1Events.length && state.t1Events) {
+    const lastKnownGamma = state.t1Events.length
+      ? state.t1Events[state.t1Events.length - 1].gamma : -1;
+    for (const t of m.t1Events) {
+      if (t.gamma > lastKnownGamma + 1e-12) {
+        totalT1++;
+        if (showT1Persistent || true) persistentT1.push({ x: t.x, y: t.y, gamma: t.gamma });
+        if (persistentT1.length > 2000) persistentT1.shift();
+      }
+    }
+  }
+  state = m;
+  pending = false;
+};
+
+function workerInit() {
+  pending = true;
+  totalT1 = 0;
+  persistentT1 = [];
+  worker.postMessage({ type: 'init', params: { N: P.N, p0: P.p0, dGamma: P.dGamma } });
+}
+function workerSetParams() {
+  worker.postMessage({ type: 'setParams', params: { p0: P.p0, dGamma: P.dGamma } });
+}
+function workerStep() {
+  if (pending) return;
+  pending = true;
+  worker.postMessage({ type: 'step', nSteps: 1 });
+}
+
+// ── Colors (shape-index diverging) ──
+const SOLID = [13, 71, 161];
+const NEUT  = [245, 244, 240];
+const FLUID = [200, 16, 46];
+function lerp3(c1, c2, t) {
+  t = Math.max(0, Math.min(1, t));
+  return `rgb(${~~(c1[0]+(c2[0]-c1[0])*t)},${~~(c1[1]+(c2[1]-c1[1])*t)},${~~(c1[2]+(c2[2]-c1[2])*t)})`;
+}
+function shapeColor(q) {
+  const QC = 3.813;
+  if (q < QC) return lerp3(SOLID, NEUT, (q - 3.4) / (QC - 3.4));
+  return lerp3(NEUT, FLUID, (q - QC) / (4.3 - QC));
+}
+
+// ── Box frame ──
+// In true Lees-Edwards, the simulation box remains a square [0,L)². The
+// shear lives in the top↔bottom boundary identification (γ·L x-shift),
+// not in the box geometry. We draw a square frame and let the cells
+// stream across the top/bottom as the shear accumulates.
+function drawBoxFrame(ox, oy, s, L) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(200,16,46,0.45)';
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(ox, oy, L * s, L * s);
+  ctx.restore();
+}
+
+// ── Rendering of cells ──
+function render() {
+  const W = canvas.parentElement.clientWidth;
+  const H = canvas.parentElement.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fafaf8';
+  ctx.fillRect(0, 0, W, H);
+
+  const L = state.L || 1;
+  const gW = state.gammaW || 0;     // wrapped strain (for LEBC image x-shift)
+  // Square box: fit into the canvas with padding
+  const pad = 24;
+  const s = Math.min((W - 2*pad) / L, (H - 2*pad) / L);
+  const ox = (W - L * s) * 0.5;
+  const oy = (H - L * s) * 0.5;
+
+  const tx = x => ox + x * s;
+  // Invert y so positive y is up on screen
+  const ty = y => oy + (L - y) * s;
+
+  drawBoxFrame(ox, oy, s, L);
+
+  // Clip subsequent drawing to the box so that ghost-tile copies don't
+  // bleed outside the square frame (clean visual).
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(ox, oy, L * s, L * s);
+  ctx.clip();
+
+  if (!state.voro || !state.voro.length) { ctx.restore(); return; }
+
+  const N = state.rx.length;
+  // LEBC ghost-image offsets. Each image tile (dj, di) sits at
+  // translation (dj·L + di·γ_w·L, di·L). di = ±1 rows carry the shear
+  // x-shift; di = 0 (same row) are plain PBC copies.
+  const tiles = [];
+  for (let di = -1; di <= 1; di++)
+    for (let dj = -1; dj <= 1; dj++)
+      tiles.push({ dx: dj * L + di * gW * L, dy: di * L });
+
+  // Precompute T1 highlight strength per cell (max over recent events).
+  const t1Glow = new Float32Array(N);
+  if (showT1 && state.t1Events) {
+    for (const t of state.t1Events) {
+      const a = Math.max(0, 1 - (t.age || 0) / 25);
+      if (a <= 0 || !t.cells) continue;
+      for (const ci of t.cells) if (a > t1Glow[ci]) t1Glow[ci] = a;
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    const poly = state.voro[i];
+    if (!poly || poly.length < 3) continue;
+    const q = state.areas[i] > 0 ? state.perims[i] / Math.sqrt(state.areas[i]) : 3.81;
+    const color = shapeColor(q);
+    const fc = color.replace('rgb', 'rgba').replace(')', ',0.55)');
+    const glow = t1Glow[i];
+
+    for (const { dx, dy } of tiles) {
+      // Skip images whose centre is far from the visible box
+      const cxImg = state.rx[i] + dx;
+      const cyImg = state.ry[i] + dy;
+      if (cxImg < -1.2 || cxImg > L + 1.2) continue;
+      if (cyImg < -1.2 || cyImg > L + 1.2) continue;
+
+      // Draw polygon shifted by (dx, dy). Vertices are already in a
+      // cell-local unwrapped frame (near the cell centre), so just add
+      // the tile offset for the shift.
+      ctx.beginPath();
+      ctx.moveTo(tx(poly[0].x + dx), ty(poly[0].y + dy));
+      for (let k = 1; k < poly.length; k++)
+        ctx.lineTo(tx(poly[k].x + dx), ty(poly[k].y + dy));
+      ctx.closePath();
+      ctx.fillStyle = fc;
+      ctx.fill();
+      if (glow > 0) {
+        // T1 flash overlay — red tint fading with age
+        ctx.fillStyle = `rgba(200,16,46,${(0.55 * glow).toFixed(3)})`;
+        ctx.fill();
+      }
+      if (showEdges) {
+        ctx.strokeStyle = glow > 0
+          ? `rgba(200,16,46,${(0.5 + 0.5 * glow).toFixed(3)})`
+          : 'rgba(26,26,46,0.35)';
+        ctx.lineWidth = glow > 0 ? 1.5 : 0.9;
+        ctx.stroke();
+      }
+      if (showCenters) {
+        ctx.beginPath();
+        ctx.arc(tx(cxImg), ty(cyImg), 2.0, 0, 2*Math.PI);
+        ctx.fillStyle = 'rgba(26,26,46,0.65)';
+        ctx.fill();
+      }
+    }
+  }
+
+  // (T1 flashes are drawn per-cell above as overlays.)
+
+  ctx.restore();  // end of box clip
+}
+
+// ── Stress-strain plot ──
+function drawStressPlot() {
+  const W = scvs.parentElement.clientWidth;
+  const H = scvs.parentElement.clientHeight;
+  sctx.clearRect(0, 0, W, H);
+  sctx.fillStyle = '#ffffff';
+  sctx.fillRect(0, 0, W, H);
+
+  const data = state.stressTrace || [];
+  const PAD_L = 46, PAD_R = 14, PAD_T = 26, PAD_B = 28;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
+  if (data.length < 2) {
+    sctx.fillStyle = 'rgba(90,90,110,0.6)';
+    sctx.font = '11px JetBrains Mono, monospace';
+    sctx.fillText('(stress trace will appear here once you run)', PAD_L + 4, PAD_T + 16);
+    return;
+  }
+
+  // Scrolling window: last 3000 pts or last 1.5 γ, whichever is shorter
+  const winLen = 3000;
+  const start = Math.max(0, data.length - winLen);
+  const slice = data.slice(start);
+
+  const gMin = slice[0].gamma;
+  const gMax = slice[slice.length - 1].gamma;
+  const gSpan = Math.max(gMax - gMin, 0.01);
+  let sMin = Infinity, sMax = -Infinity;
+  for (const d of slice) {
+    if (Number.isFinite(d.sigma)) {
+      if (d.sigma < sMin) sMin = d.sigma;
+      if (d.sigma > sMax) sMax = d.sigma;
+    }
+  }
+  if (!Number.isFinite(sMin) || !Number.isFinite(sMax)) { sMin = -0.1; sMax = 0.1; }
+  const sSpan = Math.max(sMax - sMin, 1e-4);
+  const yPad = 0.1 * sSpan;
+  sMin -= yPad; sMax += yPad;
+
+  const gx = g => PAD_L + ((g - gMin) / gSpan) * plotW;
+  const sy = s => PAD_T + (1 - (s - sMin) / (sMax - sMin)) * plotH;
+
+  // Gridlines + zero
+  sctx.strokeStyle = 'rgba(26,26,46,0.08)';
+  sctx.lineWidth = 0.5;
+  for (let k = 1; k <= 3; k++) {
+    const yy = PAD_T + (k/4) * plotH;
+    sctx.beginPath(); sctx.moveTo(PAD_L, yy); sctx.lineTo(PAD_L + plotW, yy); sctx.stroke();
+  }
+  // zero line
+  if (sMin < 0 && sMax > 0) {
+    const y0 = sy(0);
+    sctx.strokeStyle = 'rgba(26,26,46,0.35)';
+    sctx.lineWidth = 0.8;
+    sctx.setLineDash([3,3]);
+    sctx.beginPath(); sctx.moveTo(PAD_L, y0); sctx.lineTo(PAD_L + plotW, y0); sctx.stroke();
+    sctx.setLineDash([]);
+  }
+
+  // Axes box
+  sctx.strokeStyle = 'rgba(26,26,46,0.3)';
+  sctx.lineWidth = 1;
+  sctx.strokeRect(PAD_L, PAD_T, plotW, plotH);
+
+  // Trace
+  sctx.strokeStyle = 'rgba(200,16,46,0.9)';
+  sctx.lineWidth = 1.3;
+  sctx.beginPath();
+  sctx.moveTo(gx(slice[0].gamma), sy(slice[0].sigma));
+  for (let k = 1; k < slice.length; k++)
+    sctx.lineTo(gx(slice[k].gamma), sy(slice[k].sigma));
+  sctx.stroke();
+
+  // Highlight last point
+  const last = slice[slice.length - 1];
+  sctx.fillStyle = 'rgba(200,16,46,0.9)';
+  sctx.beginPath();
+  sctx.arc(gx(last.gamma), sy(last.sigma), 2.4, 0, 2*Math.PI);
+  sctx.fill();
+
+  // Labels
+  sctx.fillStyle = 'rgba(90,90,110,0.9)';
+  sctx.font = '10px JetBrains Mono, monospace';
+  sctx.fillText(`γ = ${gMin.toFixed(3)}`, PAD_L, PAD_T + plotH + 14);
+  sctx.fillText(`${gMax.toFixed(3)}`, PAD_L + plotW - 40, PAD_T + plotH + 14);
+  sctx.save();
+  sctx.translate(10, PAD_T + plotH/2);
+  sctx.rotate(-Math.PI/2);
+  sctx.textAlign = 'center';
+  sctx.fillText('σ_xy', 0, 0);
+  sctx.restore();
+  sctx.textAlign = 'left';
+  sctx.fillText(sMax.toFixed(3), 10, PAD_T + 10);
+  sctx.fillText(sMin.toFixed(3), 10, PAD_T + plotH);
+}
+
+// ── Stats ──
+function updateStats() {
+  const N = state.rx.length;
+  if (!N) return;
+  let qSum = 0, qN = 0;
+  for (let i = 0; i < N; i++) {
+    if (state.areas[i] > 0) { qSum += state.perims[i] / Math.sqrt(state.areas[i]); qN++; }
+  }
+  const qM = qN > 0 ? qSum / qN : 0;
+  const last = state.stressTrace.length ? state.stressTrace[state.stressTrace.length - 1] : null;
+
+  document.getElementById('sg').textContent = state.gamma.toFixed(4);
+  document.getElementById('sstress').textContent = last && Number.isFinite(last.sigma) ? last.sigma.toExponential(2) : '—';
+  document.getElementById('sEN').textContent = Number.isFinite(state.energyPerCell) ? state.energyPerCell.toExponential(2) : '—';
+  document.getElementById('sq').textContent = qM.toFixed(3);
+  document.getElementById('st1').textContent = totalT1;
+  const recentCount = state.t1Events ? state.t1Events.length : 0;
+  document.getElementById('st1rate').textContent = recentCount;
+  document.getElementById('sfi').textContent = state.fireIters;
+}
+
+// ── Loop ──
+let _fF = 0, _fT = performance.now();
+function loop() {
+  requestAnimationFrame(loop);
+  _fF++;
+  const now = performance.now();
+  if (now - _fT > 500) {
+    document.getElementById('fps-el').textContent = Math.round(_fF*1000/(now-_fT)) + ' fps';
+    _fF = 0; _fT = now;
+  }
+  if (running) workerStep();
+  if (state.voro) {
+    render();
+    drawStressPlot();
+    updateStats();
+  }
+}
+
+// ── UI wiring ──
+function bindSlider(id, vid, key, dec) {
+  const sl = document.getElementById(id);
+  const vl = document.getElementById(vid);
+  sl.addEventListener('input', () => {
+    P[key] = parseFloat(sl.value);
+    vl.textContent = P[key].toFixed(dec);
+    workerSetParams();
+  });
+}
+bindSlider('sl-p0', 'vp0', 'p0', 2);
+bindSlider('sl-dg', 'vdg', 'dGamma', 4);
+
+const pb = document.getElementById('btn-pause');
+pb.addEventListener('click', () => {
+  running = !running;
+  pb.textContent = running ? 'Pause' : 'Resume';
+  pb.classList.toggle('on', running);
+});
+document.getElementById('btn-reset').addEventListener('click', () => workerInit());
+
+document.getElementById('te').addEventListener('change', e => showEdges   = e.target.checked);
+document.getElementById('tc').addEventListener('change', e => showCenters = e.target.checked);
+document.getElementById('tt').addEventListener('change', e => showT1      = e.target.checked);
+document.getElementById('tp').addEventListener('change', e => showT1Persistent = e.target.checked);
+
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('on'));
+  c.classList.add('on');
+  P.p0 = parseFloat(c.dataset.p0);
+  P.dGamma = parseFloat(c.dataset.dg);
+  P.N = parseInt(c.dataset.n);
+  document.getElementById('sl-p0').value = P.p0;
+  document.getElementById('sl-dg').value = P.dGamma;
+  document.getElementById('vp0').textContent = P.p0.toFixed(2);
+  document.getElementById('vdg').textContent = P.dGamma.toFixed(4);
+  document.querySelectorAll('.nb').forEach(b => b.classList.toggle('on', parseInt(b.dataset.n) === P.N));
+  workerInit();
+}));
+
+document.querySelectorAll('.nb').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  P.N = parseInt(b.dataset.n);
+  workerInit();
+}));
+
+workerInit();
+loop();
+</script>
+</body>
+</html>
