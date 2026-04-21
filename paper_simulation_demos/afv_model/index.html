@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Active Finite Voronoi Model — Huang, Levine, Bi (Soft Matter 2023)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+    :root{
+      --color-primary:#c8102e;
+      --color-primary-soft:rgba(200,16,46,0.08);
+      --color-dark:#1a1a2e;
+      --color-text:#2d2d3a;
+      --color-text-light:#5a5a6e;
+      --color-bg:#fafaf8;
+      --color-bg-alt:#f3f3ee;
+      --color-surface:#ffffff;
+      --color-border:#e4e4dc;
+      --color-accent:#0d47a1;
+      --font-heading:'Source Serif 4','Georgia',serif;
+      --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      --font-mono:'JetBrains Mono','Fira Code',monospace;
+    }
+    html, body { width:100%; height:100%; }
+    body{
+      font-family:var(--font-body);
+      color:var(--color-text);
+      background:var(--color-bg);
+      -webkit-font-smoothing:antialiased;
+      line-height:1.55;
+      overflow:hidden;
+    }
+
+    #app{ display:flex; width:100vw; height:100vh; }
+    #stage{ flex:1; position:relative; min-width:0; background:var(--color-bg); }
+    #cvs{ width:100%; height:100%; display:block; }
+
+    #topbar{
+      position:absolute; top:0; left:0; right:0;
+      display:flex; align-items:center; gap:14px;
+      padding:14px 20px;
+      background:linear-gradient(180deg, rgba(250,250,248,0.96) 0%, rgba(250,250,248,0) 100%);
+      pointer-events:none;
+      z-index:2;
+    }
+    #topbar svg{ flex-shrink:0; }
+    #topbar h1{
+      font-family:var(--font-heading);
+      font-size:1.05rem;
+      font-weight:700;
+      color:var(--color-dark);
+      letter-spacing:-0.01em;
+    }
+    #topbar .sub{
+      font-size:0.78rem;
+      color:var(--color-text-light);
+      margin-top:2px;
+    }
+    #topbar .sub em { color:var(--color-primary); font-style:normal; font-weight:600; }
+
+    #fps-el{
+      position:absolute; top:14px; right:16px;
+      font-family:var(--font-mono); font-size:0.7rem;
+      color:var(--color-text-light);
+      pointer-events:none; z-index:2;
+    }
+
+    #stats{
+      position:absolute; bottom:14px; left:14px;
+      display:grid; grid-template-columns:auto auto;
+      gap:4px 14px;
+      font-family:var(--font-mono); font-size:0.72rem;
+      background:rgba(255,255,255,0.9);
+      padding:9px 14px;
+      border-radius:6px;
+      border:1px solid var(--color-border);
+      pointer-events:none;
+      box-shadow:0 2px 10px rgba(0,0,0,0.04);
+    }
+    .sl{ color:var(--color-text-light); white-space:nowrap; }
+    .sv{ color:var(--color-dark); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+    #panel{
+      width:320px; flex-shrink:0;
+      background:var(--color-surface);
+      border-left:1px solid var(--color-border);
+      display:flex; flex-direction:column;
+      overflow-y:auto;
+    }
+    .ps{ padding:18px 20px; border-bottom:1px solid var(--color-border); }
+    .ps:last-child{ border-bottom:none; }
+    .st{
+      font-family:var(--font-body);
+      font-size:0.66rem;
+      font-weight:700;
+      letter-spacing:0.12em;
+      text-transform:uppercase;
+      color:var(--color-text-light);
+      margin-bottom:14px;
+    }
+
+    .intro p{
+      font-size:0.84rem;
+      color:var(--color-text);
+      margin-bottom:10px;
+      line-height:1.6;
+    }
+    .intro p:last-child{ margin-bottom:0; }
+    .intro code{
+      font-family:var(--font-mono);
+      font-size:0.78rem;
+      color:var(--color-primary);
+      background:var(--color-primary-soft);
+      padding:1px 5px;
+      border-radius:3px;
+    }
+
+    .pr{ margin-bottom:16px; }
+    .pr:last-child{ margin-bottom:0; }
+    .ph{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:10px; }
+    .pn{ font-family:var(--font-body); font-size:0.82rem; font-weight:600; color:var(--color-dark); }
+    .pn .sym{ font-family:var(--font-mono); color:var(--color-primary); margin-right:4px; }
+    .pd{ font-size:0.72rem; color:var(--color-text-light); margin-top:2px; line-height:1.4; }
+    .pv{ font-family:var(--font-mono); font-size:0.84rem; font-weight:700; color:var(--color-dark); font-variant-numeric:tabular-nums; }
+
+    input[type=range]{
+      -webkit-appearance:none; appearance:none;
+      width:100%; height:4px;
+      background:var(--color-border);
+      border-radius:2px; outline:none; cursor:pointer;
+    }
+    input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;
+      width:14px; height:14px; border-radius:50%;
+      background:var(--color-primary); cursor:pointer;
+      transition:transform 0.15s;
+      box-shadow:0 0 0 3px rgba(200,16,46,0.15);
+    }
+    input[type=range]::-webkit-slider-thumb:active{ transform:scale(1.25); }
+    input[type=range]::-moz-range-thumb{
+      width:14px; height:14px; border:none; border-radius:50%;
+      background:var(--color-primary); cursor:pointer;
+    }
+
+    .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+    .chip{
+      padding:6px 11px; border-radius:6px;
+      border:1px solid var(--color-border);
+      background:var(--color-bg-alt);
+      font-size:0.74rem; font-weight:500;
+      color:var(--color-text); cursor:pointer;
+      transition:all 0.15s;
+    }
+    .chip:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .chip.on{
+      background:var(--color-primary-soft); border-color:var(--color-primary);
+      color:var(--color-primary); font-weight:600;
+    }
+
+    .nbr{ display:flex; gap:6px; }
+    .nb{
+      flex:1; padding:7px 0;
+      border:1px solid var(--color-border); border-radius:5px;
+      background:var(--color-bg-alt); color:var(--color-text);
+      font-size:0.78rem; font-family:var(--font-mono); font-weight:600;
+      cursor:pointer; transition:all 0.15s;
+    }
+    .nb:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .nb.on{ background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); }
+
+    .tog-r{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .tog-r:last-child{ margin-bottom:0; }
+    .tog-l{ font-size:0.82rem; flex:1; color:var(--color-text); }
+    .tog{ position:relative; width:34px; height:19px; cursor:pointer; flex-shrink:0; }
+    .tog input{ opacity:0; width:0; height:0; }
+    .tog-t{ position:absolute; inset:0; background:var(--color-border); border-radius:10px; transition:background 0.2s; }
+    .tog-k{ position:absolute; top:3px; left:3px; width:13px; height:13px; background:#fff; border-radius:50%; transition:transform 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.15); }
+    .tog input:checked + .tog-t{ background:var(--color-primary); }
+    .tog input:checked ~ .tog-k{ transform:translateX(15px); }
+
+    .mr{ display:flex; gap:5px; flex-wrap:wrap; }
+    .mc{
+      padding:5px 10px; border-radius:4px;
+      border:1px solid var(--color-border);
+      background:var(--color-bg-alt);
+      font-size:0.72rem; font-family:var(--font-mono);
+      color:var(--color-text-light); cursor:pointer;
+      transition:all 0.15s;
+    }
+    .mc:hover{ color:var(--color-dark); }
+    .mc.on{ background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); font-weight:600; }
+
+    .br{ display:flex; gap:8px; }
+    .btn{
+      flex:1; padding:9px 0;
+      border:1px solid var(--color-border); border-radius:5px;
+      background:var(--color-bg-alt); color:var(--color-text);
+      font-size:0.8rem; font-weight:600;
+      cursor:pointer; transition:all 0.15s;
+    }
+    .btn:hover{ border-color:var(--color-primary); color:var(--color-primary); }
+    .btn.on{ background:var(--color-primary); border-color:var(--color-primary); color:#fff; }
+
+    .cite{
+      font-size:0.74rem;
+      color:var(--color-text-light);
+      line-height:1.6;
+    }
+    .cite a{ color:var(--color-accent); text-decoration:none; }
+    .cite a:hover{ color:var(--color-primary); text-decoration:underline; }
+    .cite em{ font-style:italic; }
+
+    #panel::-webkit-scrollbar{ width:6px; }
+    #panel::-webkit-scrollbar-track{ background:transparent; }
+    #panel::-webkit-scrollbar-thumb{ background:var(--color-border); border-radius:3px; }
+    #panel::-webkit-scrollbar-thumb:hover{ background:var(--color-text-light); }
+
+    @media (max-width: 860px) {
+      body { overflow:auto; }
+      #app{ flex-direction:column; height:auto; min-height:100vh; }
+      #stage{ height:60vh; min-height:360px; }
+      #panel{ width:100%; border-left:none; border-top:1px solid var(--color-border); overflow-y:visible; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="cvs"></canvas>
+    <div id="topbar">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="8"  cy="9"  r="4.4" stroke="#c8102e" stroke-width="1.2" fill="rgba(200,16,46,0.12)"/>
+        <circle cx="16" cy="14" r="4.4" stroke="#c8102e" stroke-width="1.2" fill="rgba(200,16,46,0.12)"/>
+        <circle cx="8"  cy="9"  r="1.4" fill="#c8102e"/>
+        <circle cx="16" cy="14" r="1.4" fill="#c8102e"/>
+      </svg>
+      <div>
+        <h1>Active Finite Voronoi Model</h1>
+        <div class="sub">Huang, Levine, Bi &middot; <em>Soft Matter</em> 19, 9389 (2023)</div>
+        <div class="sub" style="margin-top:1px;">JS port of <em>pyafv</em> by Wei Wang &amp; Brian Camley</div>
+      </div>
+    </div>
+    <div id="fps-el">-- fps</div>
+    <div id="stats">
+      <span class="sl">⟨A⟩</span>    <span class="sv" id="sa">—</span>
+      <span class="sl">⟨P⟩</span>    <span class="sv" id="sp">—</span>
+      <span class="sl">arc frac</span><span class="sv" id="sarc">—</span>
+      <span class="sl">⟨|v|⟩</span>  <span class="sv" id="ss">—</span>
+      <span class="sl">steps</span>  <span class="sv" id="sn">0</span>
+    </div>
+  </div>
+
+  <div id="panel">
+
+    <div class="ps intro">
+      <div class="st">About this model</div>
+      <p>This demo is a <strong>JavaScript port of <a href="https://github.com/wwang721/pyafv" target="_blank" rel="noopener" style="color:var(--color-primary);">pyafv</a></strong>, the open-source Python implementation of the Active Finite Voronoi model by <strong>Wei Wang</strong> and <strong>Brian Camley</strong> (Johns Hopkins).</p>
+      <p>Active Finite Voronoi (AFV). Each cell is the Voronoi region around a self-propelled point, <strong>intersected with a disk of radius ℓ</strong>. Boundaries are a mix of straight edges (shared with neighbours inside range ℓ) and circular arcs (cell–medium interface).</p>
+      <p>Energy: <code>E = Σ [Kₐ(A−A₀)² + Kₚ(P−P₀)²] + Λ · L_arc</code>. The line-tension <code>Λ</code> on non-contacting arcs controls adhesion/cohesion; at small Λ cells detach and fragment, at large Λ the tissue stays confluent.</p>
+      <p>Unlike confluent Voronoi/vertex models (like SPV), AFV allows <strong>free boundaries, detachment, and fragmentation</strong> — bridging cohesive tissues and isolated motile cells.</p>
+    </div>
+
+    <div class="ps">
+      <div class="st">Model Parameters</div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">ℓ</span>interaction radius</div>
+            <div class="pd">Maximum cell radius; isolated cell is a disk of radius ℓ</div>
+          </div>
+          <span class="pv" id="vr">1.00</span>
+        </div>
+        <input type="range" id="sl-r" min="0.60" max="1.60" step="0.01" value="1.00"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">A₀</span>preferred area</div>
+            <div class="pd">Default π (matches ℓ=1)</div>
+          </div>
+          <span class="pv" id="va0">3.14</span>
+        </div>
+        <input type="range" id="sl-a0" min="1.50" max="5.00" step="0.01" value="3.14"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">P₀</span>preferred perimeter</div>
+            <div class="pd">Shape index p₀ = P₀/√A₀</div>
+          </div>
+          <span class="pv" id="vp0">4.80</span>
+        </div>
+        <input type="range" id="sl-p0" min="3.50" max="7.00" step="0.01" value="4.80"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">Λ</span>arc tension</div>
+            <div class="pd">Line tension on cell–medium edges</div>
+          </div>
+          <span class="pv" id="vlam">0.20</span>
+        </div>
+        <input type="range" id="sl-lam" min="0.00" max="1.50" step="0.01" value="0.20"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">v₀</span>self-propulsion</div>
+            <div class="pd">Motility speed</div>
+          </div>
+          <span class="pv" id="vv0">0.05</span>
+        </div>
+        <input type="range" id="sl-v0" min="0.00" max="0.50" step="0.005" value="0.05"/>
+      </div>
+      <div class="pr">
+        <div class="ph">
+          <div>
+            <div class="pn"><span class="sym">Dᵣ</span>rotational noise</div>
+            <div class="pd">Persistence time τ = 1/Dᵣ</div>
+          </div>
+          <span class="pv" id="vdr">0.10</span>
+        </div>
+        <input type="range" id="sl-dr" min="0.01" max="5.00" step="0.01" value="0.10"/>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Phase Presets</div>
+      <div class="chips">
+        <div class="chip on" data-r="1.00" data-a0="3.14" data-p0="4.80" data-lam="0.20" data-v0="0.05" data-dr="0.10" data-sp="1.80">Default (cohesive)</div>
+        <div class="chip"    data-r="1.00" data-a0="3.14" data-p0="4.80" data-lam="0.05" data-v0="0.15" data-dr="0.30" data-sp="2.10">Detaching (low Λ)</div>
+        <div class="chip"    data-r="1.00" data-a0="3.14" data-p0="4.80" data-lam="1.00" data-v0="0.03" data-dr="0.10" data-sp="1.60">Confluent (high Λ)</div>
+        <div class="chip"    data-r="1.00" data-a0="3.14" data-p0="5.60" data-lam="0.20" data-v0="0.12" data-dr="0.20" data-sp="1.80">Active fluid</div>
+        <div class="chip"    data-r="1.00" data-a0="3.14" data-p0="4.80" data-lam="0.20" data-v0="0.30" data-dr="0.05" data-sp="2.30">Fragmenting</div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Simulation</div>
+      <div class="pr">
+        <div class="pn" style="margin-bottom:6px;">N cells</div>
+        <div class="nbr">
+          <button class="nb"    data-n="24">24</button>
+          <button class="nb on" data-n="36">36</button>
+          <button class="nb"    data-n="49">49</button>
+          <button class="nb"    data-n="64">64</button>
+        </div>
+      </div>
+      <div class="pr">
+        <div class="pn">Steps / frame: <span id="vspf" style="font-family:var(--font-mono); color:var(--color-primary);">1</span></div>
+        <input type="range" id="sl-spf" min="1" max="6" step="1" value="1" style="margin-top:6px;"/>
+      </div>
+      <div class="br" style="margin-top:10px;">
+        <button class="btn on" id="btn-pause">Pause</button>
+        <button class="btn"    id="btn-reset">Reset</button>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Visualization</div>
+      <div class="tog-r">
+        <span class="tog-l">Cell boundaries</span>
+        <label class="tog"><input type="checkbox" id="te" checked/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Cell centres</span>
+        <label class="tog"><input type="checkbox" id="tc"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Polarity arrows</span>
+        <label class="tog"><input type="checkbox" id="ta" checked/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div class="tog-r">
+        <span class="tog-l">Interaction range (ℓ)</span>
+        <label class="tog"><input type="checkbox" id="tl"/><span class="tog-t"></span><span class="tog-k"></span></label>
+      </div>
+      <div style="margin-top:12px; margin-bottom:6px; font-size:0.78rem; color:var(--color-text-light); font-weight:500;">Color cells by</div>
+      <div class="mr">
+        <div class="mc on" data-m="contact">contact (arc frac)</div>
+        <div class="mc" data-m="area">area</div>
+        <div class="mc" data-m="speed">speed</div>
+        <div class="mc" data-m="polarity">polarity</div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">References</div>
+      <div class="cite">
+        <p style="margin-bottom:10px;"><strong>This demo is a JavaScript port of</strong> <a href="https://github.com/wwang721/pyafv" target="_blank" rel="noopener">pyafv</a>, the open-source Python implementation by W. Wang and B. A. Camley:</p>
+        <p style="margin-bottom:14px; padding-left:10px; border-left:2px solid var(--color-primary);">[1] W. Wang and B. A. Camley, <em>Divergence of detachment forces in the finite Voronoi model</em>, <a href="https://arxiv.org/abs/2604.15481" target="_blank" rel="noopener">arXiv preprint arXiv:2604.15481</a> (2026). &nbsp; [<a href="https://github.com/wwang721/pyafv" target="_blank" rel="noopener">GitHub</a>]</p>
+        <p style="margin-bottom:10px;">[2] Huang, J., Levine, H., Bi, D. <em>Bridging the gap between collective motility and epithelial–mesenchymal transitions through the active finite Voronoi model.</em> <a href="https://doi.org/10.1039/D3SM00327B" target="_blank" rel="noopener">Soft Matter <strong>19</strong>, 9389 (2023)</a>.</p>
+        <p>[3] Teomy, E., Kessler, D. A., Levine, H. <em>Confluent and nonconfluent phases in a model of cell tissue.</em> <a href="https://doi.org/10.1103/PhysRevE.98.042418" target="_blank" rel="noopener">Phys. Rev. E <strong>98</strong>, 042418 (2018)</a>.</p>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="st">Disclaimer</div>
+      <div class="cite" style="font-style:italic;">
+        This demo was developed with assistance from AI coding tools. Forces are computed by numerical finite differences of the total energy, not by the analytical derivative machinery in <a href="https://github.com/wwang721/pyafv" target="_blank" rel="noopener">pyafv</a>. Treat results as illustrative, not authoritative; consult the cited references and pyafv for production simulations.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Controls / view state ──
+const P = { N: 36, r: 1.00, A0: Math.PI, P0: 4.80, Lambda: 0.20, v0: 0.05, Dr: 0.10, spacing: 1.80, spf: 1 };
+let running = true;
+let vizMode = 'contact';
+let showEdges = true, showCenters = false, showArrows = true, showRange = false;
+
+// Latest worker state
+let state = {
+  rx: [], ry: [], theta: [], spd: [], areas: [], perims: [], arcLens: [], pieces: null,
+  stepCount: 0, boxW: 20, boxH: 20,
+};
+
+const canvas = document.getElementById('cvs');
+const ctx    = canvas.getContext('2d');
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth;
+  const h = canvas.parentElement.clientHeight;
+  canvas.width  = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Web Worker ──
+const worker = new Worker('physics.worker.js');
+let pending = false;
+worker.onerror = (e) => {
+  console.error('Worker error:', e.message, 'at', (e.filename||'?')+':'+(e.lineno||'?'));
+  const s = document.getElementById('sa'); if (s) s.textContent = 'ERR';
+  pending = false;
+};
+worker.onmessage = (ev) => {
+  const m = ev.data;
+  if (m.type !== 'state') return;
+  state = m;
+  pending = false;
+};
+
+function workerInit() {
+  pending = true;
+  worker.postMessage({ type: 'init', params: { ...P } });
+}
+function workerSetParams() {
+  worker.postMessage({ type: 'setParams', params: { ...P } });
+}
+function workerStep() {
+  if (pending) return;
+  pending = true;
+  worker.postMessage({ type: 'step', nSteps: P.spf });
+}
+
+// ── Colors ──
+function lerp3(c1, c2, t) {
+  t = Math.max(0, Math.min(1, t));
+  return `rgb(${~~(c1[0]+(c2[0]-c1[0])*t)},${~~(c1[1]+(c2[1]-c1[1])*t)},${~~(c1[2]+(c2[2]-c1[2])*t)})`;
+}
+const BLUE   = [13, 71, 161];
+const NEUT   = [245, 244, 240];
+const RED    = [200, 16, 46];
+const PURPLE = [120, 60, 180];
+
+function contactColor(arcFrac) {
+  // arcFrac high = isolated (red), low = confluent (blue)
+  return lerp3(BLUE, RED, Math.max(0, Math.min(1, arcFrac)));
+}
+function areaColor(A) {
+  const t = (A - P.A0*0.7) / (P.A0*0.8);
+  return lerp3(BLUE, RED, t);
+}
+function speedColor(s) { return lerp3(BLUE, RED, Math.min(s / (P.v0*2 + 0.01), 1)); }
+function polarColor(a) {
+  const t = (((a % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI)) / (2*Math.PI);
+  return t < 0.5 ? lerp3(BLUE, RED, t*2) : lerp3(RED, PURPLE, (t-0.5)*2);
+}
+
+// ── Rendering ──
+function render() {
+  const W = canvas.parentElement.clientWidth;
+  const H = canvas.parentElement.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fafaf8';
+  ctx.fillRect(0, 0, W, H);
+
+  if (!state.pieces || !state.pieces.length) return;
+
+  const bw = state.boxW || 1, bh = state.boxH || 1;
+  const pad = 12;
+  const s = Math.min((W - 2*pad) / bw, (H - 2*pad) / bh);
+  const ox = (W - s * bw) * 0.5;
+  const oy = (H - s * bh) * 0.5;
+  const tx = x => ox + x * s;
+  const ty = y => oy + y * s;
+
+  // Box frame
+  ctx.strokeStyle = 'rgba(26,26,46,0.12)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox, oy, s * bw, s * bh);
+
+  const N = state.rx.length;
+
+  for (let i = 0; i < N; i++) {
+    const pieces = state.pieces[i];
+    if (!pieces || !pieces.length) continue;
+
+    const A = state.areas[i];
+    const Pp = state.perims[i];
+    const Parc = state.arcLens[i];
+    const arcFrac = Pp > 0 ? Parc / Pp : 0;
+    let color;
+    switch (vizMode) {
+      case 'contact':  color = contactColor(arcFrac); break;
+      case 'area':     color = areaColor(A); break;
+      case 'speed':    color = speedColor(state.spd[i]); break;
+      case 'polarity': color = polarColor(state.theta[i]); break;
+      default:         color = contactColor(arcFrac);
+    }
+    const fc = color.replace('rgb', 'rgba').replace(')', ',0.55)');
+
+    // Optional interaction-range circle
+    if (showRange) {
+      ctx.beginPath();
+      ctx.arc(tx(state.rx[i]), ty(state.ry[i]), P.r * s, 0, 2*Math.PI);
+      ctx.strokeStyle = 'rgba(26,26,46,0.08)';
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Fill & outline
+    ctx.beginPath();
+    let started = false;
+    for (const p of pieces) {
+      if (p.type === 'fulldisk') {
+        ctx.arc(tx(p.cx), ty(p.cy), p.r * s, 0, 2*Math.PI);
+        started = true;
+      } else if (p.type === 'line') {
+        if (!started) { ctx.moveTo(tx(p.a[0]), ty(p.a[1])); started = true; }
+        ctx.lineTo(tx(p.b[0]), ty(p.b[1]));
+      } else if (p.type === 'arc') {
+        if (!started) { ctx.moveTo(tx(p.a[0]), ty(p.a[1])); started = true; }
+        const start = Math.atan2(p.a[1] - p.cy, p.a[0] - p.cx);
+        const end   = start + p.angle;
+        ctx.arc(tx(p.cx), ty(p.cy), p.r * s, start, end, false);
+      }
+    }
+    ctx.closePath();
+    ctx.fillStyle = fc;
+    ctx.fill();
+    if (showEdges) {
+      // Dark outline for straight edges, slightly lighter for arcs (we draw once here)
+      ctx.strokeStyle = 'rgba(26,26,46,0.45)';
+      ctx.lineWidth = 1.0;
+      ctx.stroke();
+    }
+  }
+
+  // Polarity arrows and cell centres pass
+  for (let i = 0; i < N; i++) {
+    const cx = tx(state.rx[i]);
+    const cy = ty(state.ry[i]);
+
+    if (showArrows && P.v0 > 1e-3) {
+      const al = s * 0.25;
+      const nx = Math.cos(state.theta[i]);
+      const ny = Math.sin(state.theta[i]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + nx*al, cy + ny*al);
+      ctx.strokeStyle = 'rgba(26,26,46,0.9)';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      const hw = 3.5;
+      const ang = state.theta[i];
+      ctx.beginPath();
+      ctx.moveTo(cx + nx*al, cy + ny*al);
+      ctx.lineTo(cx + nx*al - hw*Math.cos(ang - 0.5), cy + ny*al - hw*Math.sin(ang - 0.5));
+      ctx.lineTo(cx + nx*al - hw*Math.cos(ang + 0.5), cy + ny*al - hw*Math.sin(ang + 0.5));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(26,26,46,0.9)';
+      ctx.fill();
+    }
+    if (showCenters) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.2, 0, 2*Math.PI);
+      ctx.fillStyle = 'rgba(26,26,46,0.75)';
+      ctx.fill();
+    }
+  }
+}
+
+// ── Stats ──
+function updateStats() {
+  const N = state.rx.length;
+  if (!N) return;
+  let Asum = 0, Psum = 0, Arsum = 0, Ssum = 0;
+  for (let i = 0; i < N; i++) {
+    Asum += state.areas[i];
+    Psum += state.perims[i];
+    Arsum += state.arcLens[i];
+    Ssum += state.spd[i];
+  }
+  const Am = Asum / N;
+  const Pm = Psum / N;
+  const arcFrac = Psum > 0 ? Arsum / Psum : 0;
+  const Sm = Ssum / N;
+  document.getElementById('sa').textContent = Am.toFixed(3);
+  document.getElementById('sp').textContent = Pm.toFixed(3);
+  document.getElementById('sarc').textContent = arcFrac.toFixed(3);
+  document.getElementById('ss').textContent = Sm.toFixed(4);
+  document.getElementById('sn').textContent = state.stepCount;
+}
+
+// ── Loop ──
+let _fF = 0, _fT = performance.now();
+function loop() {
+  requestAnimationFrame(loop);
+  _fF++;
+  const now = performance.now();
+  if (now - _fT > 500) {
+    document.getElementById('fps-el').textContent = Math.round(_fF*1000/(now-_fT)) + ' fps';
+    _fF = 0; _fT = now;
+  }
+  if (running) workerStep();
+  if (state.pieces) {
+    render();
+    updateStats();
+  }
+}
+
+// ── UI wiring ──
+function bindSlider(id, vid, key, dec, afterSetHook) {
+  const sl = document.getElementById(id);
+  const vl = document.getElementById(vid);
+  sl.addEventListener('input', () => {
+    P[key] = parseFloat(sl.value);
+    vl.textContent = P[key].toFixed(dec);
+    if (afterSetHook) afterSetHook();
+    workerSetParams();
+  });
+}
+bindSlider('sl-r',   'vr',   'r',      2);
+bindSlider('sl-a0',  'va0',  'A0',     2);
+bindSlider('sl-p0',  'vp0',  'P0',     2);
+bindSlider('sl-lam', 'vlam', 'Lambda', 2);
+bindSlider('sl-v0',  'vv0',  'v0',     3);
+bindSlider('sl-dr',  'vdr',  'Dr',     2);
+document.getElementById('sl-spf').addEventListener('input', e => {
+  P.spf = parseInt(e.target.value);
+  document.getElementById('vspf').textContent = e.target.value;
+});
+
+const pb = document.getElementById('btn-pause');
+pb.addEventListener('click', () => {
+  running = !running;
+  pb.textContent = running ? 'Pause' : 'Resume';
+  pb.classList.toggle('on', running);
+});
+document.getElementById('btn-reset').addEventListener('click', () => { workerInit(); });
+
+document.getElementById('te').addEventListener('change', e => showEdges   = e.target.checked);
+document.getElementById('tc').addEventListener('change', e => showCenters = e.target.checked);
+document.getElementById('ta').addEventListener('change', e => showArrows  = e.target.checked);
+document.getElementById('tl').addEventListener('change', e => showRange   = e.target.checked);
+
+document.querySelectorAll('.mc').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.mc').forEach(x => x.classList.remove('on'));
+  c.classList.add('on');
+  vizMode = c.dataset.m;
+}));
+
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('on'));
+  c.classList.add('on');
+  P.r      = parseFloat(c.dataset.r);
+  P.A0     = parseFloat(c.dataset.a0);
+  P.P0     = parseFloat(c.dataset.p0);
+  P.Lambda = parseFloat(c.dataset.lam);
+  P.v0     = parseFloat(c.dataset.v0);
+  P.Dr     = parseFloat(c.dataset.dr);
+  P.spacing= parseFloat(c.dataset.sp);
+  // Reflect in sliders
+  const set = (id, vid, val, dec) => {
+    document.getElementById(id).value = val;
+    document.getElementById(vid).textContent = val.toFixed(dec);
+  };
+  set('sl-r',   'vr',   P.r,      2);
+  set('sl-a0',  'va0',  P.A0,     2);
+  set('sl-p0',  'vp0',  P.P0,     2);
+  set('sl-lam', 'vlam', P.Lambda, 2);
+  set('sl-v0',  'vv0',  P.v0,     3);
+  set('sl-dr',  'vdr',  P.Dr,     2);
+  workerInit();
+}));
+
+document.querySelectorAll('.nb').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  P.N = parseInt(b.dataset.n);
+  workerInit();
+}));
+
+workerInit();
+loop();
+</script>
+</body>
+</html>
