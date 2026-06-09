@@ -1,0 +1,20 @@
+{
+  "name": "voronoi3d-cell-model",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Interactive 3D Voronoi (self-propelled-Voronoi) cell-model demo: in-browser FIRE relaxation with exact analytic forces, voro++ (WebAssembly) periodic tessellation, and Three.js (WebGL) rendering.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node test_v.mjs"
+  },
+  "keywords": [
+    "voronoi",
+    "self-propelled-voronoi",
+    "tissue-mechanics",
+    "rigidity-transition",
+    "three.js",
+    "webassembly",
+    "voro++",
+    "fire-minimization"
+  ]
+}

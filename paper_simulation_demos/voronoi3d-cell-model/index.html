@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D Voronoi cell model — interactive demo</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#151a23; --ink:#dce3ee; --mut:#8b97a8; --acc:#4da3ff; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+              font:13px/1.45 system-ui, sans-serif; overflow:hidden; }
+  #app { display:flex; height:100%; }
+  #view { flex:1; position:relative; min-width:0; }
+  #view canvas { display:block; }
+  #hud { position:absolute; top:10px; left:12px; padding:8px 12px; background:rgba(10,13,20,.6);
+         border:1px solid #2a3340; border-radius:8px; font-variant-numeric:tabular-nums; pointer-events:none; }
+  #hud b { color:var(--acc); }
+  #panel { width:312px; background:var(--panel); border-left:1px solid #232c38; padding:14px 16px;
+           overflow-y:auto; }
+  h1 { font-size:15px; margin:0 0 2px; }
+  .sub { color:var(--mut); margin:0 0 12px; font-size:11.5px; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; }
+  .tab { flex:1; text-align:center; padding:6px; border:1px solid #2a3340; border-radius:6px;
+         background:#10151d; cursor:pointer; color:var(--mut); }
+  .tab.on { color:var(--ink); border-color:var(--acc); background:#16202c; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:9px 0; }
+  .row label { color:var(--mut); }
+  .row .val { color:var(--ink); min-width:62px; text-align:right; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:148px; accent-color:var(--acc); }
+  select, input[type=number] { background:#0e131b; color:var(--ink); border:1px solid #2a3340;
+            border-radius:5px; padding:3px 5px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
+  button { flex:1 1 auto; padding:7px 9px; background:#1b2733; color:var(--ink); border:1px solid #2c3a49;
+           border-radius:6px; cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:#1d4a7a; border-color:#2f6db0; }
+  .stat { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #1d2530; }
+  .stat span:last-child { font-variant-numeric:tabular-nums; }
+  .note { color:var(--mut); font-size:11px; margin-top:12px; border-top:1px solid #232c38; padding-top:10px; }
+  #plotwrap { display:none; }
+  canvas#plot { width:100%; background:#0e131b; border:1px solid #232c38; border-radius:6px; margin-top:8px; }
+  #prog { height:5px; background:#1b2733; border-radius:3px; overflow:hidden; margin-top:8px; }
+  #prog > div { height:100%; width:0; background:var(--acc); }
+  code { color:#9ad; }
+  a { color:var(--acc); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .linkbtn { background:none; border:none; color:var(--acc); cursor:pointer; padding:0; font:inherit; }
+  .linkbtn:hover { text-decoration:underline; border:none; }
+  /* about / references modal */
+  #about { position:fixed; inset:0; background:rgba(5,7,11,.72); display:none;
+           align-items:center; justify-content:center; z-index:50; padding:24px; }
+  #about.open { display:flex; }
+  .card { max-width:780px; max-height:86vh; overflow-y:auto; background:#11161f;
+          border:1px solid #2a3340; border-radius:12px; padding:22px 26px; line-height:1.55; }
+  .card h2 { margin:0 0 2px; font-size:18px; }
+  .card h3 { margin:18px 0 6px; font-size:12px; color:var(--acc);
+             text-transform:uppercase; letter-spacing:.05em; }
+  .card p { margin:8px 0; color:#c4ccd9; }
+  .card .eq { background:#0c1118; border:1px solid #1f2733; border-radius:6px; padding:10px 12px;
+              margin:10px 0; font-family:ui-monospace,monospace; font-size:12.5px; color:#bcd; overflow-x:auto; }
+  .card ol { margin:6px 0; padding-left:20px; }
+  .card ol li { margin:8px 0; color:#c4ccd9; }
+  .card .x { float:right; cursor:pointer; color:var(--mut); font-size:22px; line-height:1;
+             border:none; background:none; padding:0 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view">
+    <div id="hud"></div>
+  </div>
+  <div id="panel">
+    <h1>3D Voronoi cell model</h1>
+    <p class="sub">Periodic 3D self-propelled-Voronoi energy
+       <code>e = Σ kᵥ(vᵢ−1)² + k_S(sᵢ−s₀)²</code>, relaxed with FIRE.
+       Faithful port of a validated MATLAB reference implementation (analytic forces, FD-verified).</p>
+
+    <div class="tabs">
+      <div class="tab on" data-mode="relax">Relaxer</div>
+      <div class="tab" data-mode="trans">Transition</div>
+    </div>
+
+    <!-- shared parameters -->
+    <div class="row"><label>cells N</label><input id="N" type="range" min="20" max="96" step="1" value="64"><span class="val" id="Nv">64</span></div>
+    <div class="row"><label>seed</label><input id="seed" type="number" min="1" max="999" value="1" style="width:64px"><span class="val"></span></div>
+    <div class="row"><label>shape index s₀</label><input id="s0" type="range" min="4.6" max="6.0" step="0.01" value="5.20"><span class="val" id="s0v">5.20</span></div>
+    <div class="row"><label>volume rigidity log₁₀ kᵥ</label><input id="lkv" type="range" min="-8" max="2" step="0.25" value="0"><span class="val" id="lkvv">1e+0</span></div>
+    <div class="row"><label>surface k_S</label><input id="ks" type="range" min="0" max="1" step="0.05" value="1"><span class="val" id="ksv">1.00</span></div>
+
+    <!-- relaxer controls -->
+    <div id="relaxctl">
+      <div class="btns">
+        <button id="rand">Randomize</button>
+        <button id="step">Step</button>
+        <button id="run" class="primary">Run</button>
+        <button id="conv">Converge</button>
+      </div>
+      <div class="row"><label>color cells by</label>
+        <select id="colorby">
+          <option value="shape">shape index sᵢ</option>
+          <option value="vol">volume vᵢ</option>
+          <option value="energy">cell energy eᵢ</option>
+        </select><span class="val"></span></div>
+      <div class="row"><label>show cell faces</label><input id="showfaces" type="checkbox" checked><span class="val"></span></div>
+      <div class="row"><label>show Voronoi edges</label><input id="showedges" type="checkbox" checked><span class="val"></span></div>
+      <div style="margin-top:10px">
+        <div class="stat"><span>step</span><span id="s_step">0</span></div>
+        <div class="stat"><span>⟨E/N⟩</span><span id="s_E">–</span></div>
+        <div class="stat"><span>max|F|</span><span id="s_F">–</span></div>
+        <div class="stat"><span>⟨shape index⟩</span><span id="s_s">–</span></div>
+        <div class="stat"><span>volume CoV</span><span id="s_cov">–</span></div>
+        <div class="stat"><span>status</span><span id="s_stat">–</span></div>
+      </div>
+    </div>
+
+    <!-- transition controls -->
+    <div id="transctl" style="display:none">
+      <div class="row"><label>s₀ from</label><input id="s0a" type="number" value="5.0" step="0.05" style="width:60px"><label>to</label><input id="s0b" type="number" value="5.8" step="0.05" style="width:60px"><span class="val"></span></div>
+      <div class="row"><label>s₀ step</label><input id="s0d" type="number" value="0.05" step="0.01" style="width:60px"><span class="val"></span></div>
+      <div class="row"><label>seeds / point</label><input id="nse" type="number" value="2" min="1" max="8" style="width:60px"><span class="val"></span></div>
+      <div class="btns"><button id="sweep" class="primary">Run sweep</button><button id="stopsweep">Stop</button></div>
+      <div id="prog"><div></div></div>
+      <div id="plotwrap" style="display:block">
+        <canvas id="plot" width="560" height="420"></canvas>
+      </div>
+    </div>
+
+    <p class="note">Small N (interactive limit &lt;100) → the rigidity transition (s₀*≈5.41,
+       a large-N value) is finite-size-rounded here. Set <code>k_S=0</code> to watch the
+       volume-only energy drive an <b>equal-volume tiling</b> (volume CoV → 0).</p>
+    <p class="note" style="border-top:none; padding-top:0">
+       Runs entirely in your browser: <b>voro++</b> (WebAssembly) tessellation · exact
+       analytic forces · <b>FIRE</b> relaxation · <b>Three.js</b> (WebGL) rendering.
+       MIT&nbsp;License. &nbsp;<button class="linkbtn" id="aboutbtn">About &amp; references ↗</button></p>
+  </div>
+</div>
+
+<!-- About / references modal -->
+<div id="about">
+  <div class="card">
+    <button class="x" id="aboutx" title="close">×</button>
+    <h2>3D Voronoi (self-propelled-Voronoi) cell model</h2>
+    <p class="muted" style="color:#8b97a8;font-size:11.5px;margin:0">Interactive, in-browser energy minimization · MIT&nbsp;License</p>
+
+    <p><b>The model.</b> <i>N</i> cell centers in a periodic unit box define a 3D Voronoi
+       tessellation. Each cell <i>i</i> carries a dimensionless energy penalizing departures
+       from a target volume and a target surface area (its <i>shape index</i>):</p>
+    <div class="eq">e = Σᵢ [ kᵥ (vᵢ − 1)² + k_S (sᵢ − s₀)² ]
+vᵢ = Vᵢ / ⟨V⟩ ,   sᵢ = Sᵢ / ⟨V⟩^(2/3) ,   ⟨V⟩ = 1/N</div>
+    <p>kᵥ = Kᵥ⟨V⟩<sup>2/3</sup>/K_S is the single dimensionless stiffness ratio and s₀ is the
+       preferred shape index. Volumes and areas are reduced so the average cell volume is 1.</p>
+
+    <p><b>The transition.</b> Rigidity here is controlled by geometry alone: the tissue is
+       solid below a critical shape index and fluid above it. The 3D Voronoi value is
+       <b>s₀* ≈ 5.41</b> (the analogue of p₀* ≈ 3.81 for the 2D model). Because the demo is
+       capped at <i>N</i> &lt; 100 for interactivity, the transition is finite-size-rounded —
+       the sharp threshold only emerges at large <i>N</i>. Setting <code>k_S = 0</code> makes
+       the volume term alone drive an <b>equal-volume tiling</b> (volume CoV → 0).</p>
+
+    <p><b>How it works.</b> Everything runs client-side. The periodic Voronoi tessellation is
+       computed by <b>voro++</b> compiled to WebAssembly; the forces are the <b>exact analytic
+       gradient</b> of the energy above (finite-difference-verified to ~10⁻¹⁰); configurations
+       are relaxed with the <b>FIRE 2.0</b> minimizer; rendering is GPU via <b>Three.js</b>.</p>
+
+    <p><b>Using it.</b> <i>Relaxer</i> — set <i>N</i>, seed, s₀, kᵥ, k_S and Run / Step / Converge
+       to watch FIRE relax the packing; color cells by shape index, volume, or cell energy, and
+       toggle faces/edges. <i>Transition</i> — sweep s₀ (a few seeds each) and plot ⟨E/N⟩ and
+       ⟨sᵢ⟩ vs s₀, with s₀* ≈ 5.41 marked.</p>
+
+    <h3>References</h3>
+    <ol>
+      <li>M. Merkel &amp; M. L. Manning, “A geometrically controlled rigidity transition in a
+        model for confluent 3D tissues,” <i>New J. Phys.</i> <b>20</b>, 022002 (2018).
+        <a href="https://doi.org/10.1088/1367-2630/aaaa13" target="_blank" rel="noopener">doi:10.1088/1367-2630/aaaa13</a> ·
+        <a href="https://arxiv.org/abs/1706.02656" target="_blank" rel="noopener">arXiv:1706.02656</a>
+        — <span class="muted">the 3D model and the s₀* ≈ 5.41 transition implemented here.</span></li>
+      <li>D. Bi, J. H. Lopez, J. M. Schwarz &amp; M. L. Manning, “A density-independent rigidity
+        transition in biological tissues,” <i>Nat. Phys.</i> <b>11</b>, 1074–1079 (2015).
+        <a href="https://doi.org/10.1038/nphys3471" target="_blank" rel="noopener">doi:10.1038/nphys3471</a> ·
+        <a href="https://arxiv.org/abs/1409.0593" target="_blank" rel="noopener">arXiv:1409.0593</a>
+        — <span class="muted">the 2D shape-index rigidity transition (p₀* ≈ 3.81).</span></li>
+      <li>E. Bitzek, P. Koskinen, F. Gähler, M. Moseler &amp; P. Gumbsch, “Structural Relaxation
+        Made Simple,” <i>Phys. Rev. Lett.</i> <b>97</b>, 170201 (2006).
+        <a href="https://doi.org/10.1103/PhysRevLett.97.170201" target="_blank" rel="noopener">doi:10.1103/PhysRevLett.97.170201</a>
+        — <span class="muted">the original FIRE minimizer.</span></li>
+      <li>J. Guénolé <i>et al.</i>, “Assessment and optimization of the fast inertial relaxation
+        engine (FIRE) for energy minimization in atomistic simulations and its implementation in
+        LAMMPS,” <i>Comput. Mater. Sci.</i> <b>175</b>, 109584 (2020).
+        <a href="https://doi.org/10.1016/j.commatsci.2020.109584" target="_blank" rel="noopener">doi:10.1016/j.commatsci.2020.109584</a> ·
+        <a href="https://arxiv.org/abs/1908.02038" target="_blank" rel="noopener">arXiv:1908.02038</a>
+        — <span class="muted">FIRE 2.0, the variant used here.</span></li>
+      <li>C. H. Rycroft, “VORO++: A three-dimensional Voronoi cell library in C++,”
+        <i>Chaos</i> <b>19</b>, 041111 (2009).
+        <a href="https://doi.org/10.1063/1.3215722" target="_blank" rel="noopener">doi:10.1063/1.3215722</a> ·
+        <a href="https://math.lbl.gov/voro++/" target="_blank" rel="noopener">math.lbl.gov/voro++</a>
+        — <span class="muted">the tessellation engine (compiled to WebAssembly).</span></li>
+    </ol>
+
+    <h3>Built with</h3>
+    <p><a href="https://threejs.org" target="_blank" rel="noopener">Three.js</a> (WebGL rendering) ·
+       <a href="https://math.lbl.gov/voro++/" target="_blank" rel="noopener">voro++</a> compiled to
+       WebAssembly via <a href="https://emscripten.org" target="_blank" rel="noopener">Emscripten</a> ·
+       the FIRE 2.0 minimizer.</p>
+
+    <h3>License</h3>
+    <p>Code released under the <b>MIT License</b> — free to use, modify, and distribute. Cited
+       works are © their respective authors/publishers.</p>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { initVoro, energyAndForce, makeConfig, makeState, fireStep, relax } from './voro3d.js';
+
+// ---------- Three.js scene ----------
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b0e14);
+const cam = new THREE.PerspectiveCamera(48, 1, 0.01, 100); cam.position.set(2.0,1.5,2.2);
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.target.set(0.5,0.5,0.5); controls.enableDamping = true; controls.dampingFactor = 0.08;
+
+// image-based lighting → soft reflections give the spheres depth; key/fill/hemisphere on top
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xbcd2ff, 0x10141c, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(2.5,3.5,2.0); scene.add(key);
+const fill = new THREE.DirectionalLight(0x9ab8ff, 0.35); fill.position.set(-2.0,1.0,-1.5); scene.add(fill);
+
+// fat-line materials (need pixel resolution; updated in size())
+const edgeMat = new LineMaterial({ color:0x7fdcff, linewidth:1.6, transparent:true, opacity:0.55, depthWrite:false });
+const boxMat  = new LineMaterial({ color:0xb9cbe2, linewidth:2.8, transparent:true, opacity:0.95 });
+function size(){
+  const w=view.clientWidth, h=view.clientHeight;
+  renderer.setSize(w,h); cam.aspect=w/h; cam.updateProjectionMatrix();
+  edgeMat.resolution.set(w,h); boxMat.resolution.set(w,h);
+}
+
+// bright bounding box (fat lines) + faint volume panels so the cube reads clearly
+const boxGeo = new LineSegmentsGeometry().fromEdgesGeometry(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)));
+const box = new LineSegments2(boxGeo, boxMat); box.position.set(0.5,0.5,0.5); box.renderOrder=3; scene.add(box);
+const boxFaces = new THREE.Mesh(new THREE.BoxGeometry(1,1,1),
+  new THREE.MeshBasicMaterial({ color:0x223247, transparent:true, opacity:0.06, side:THREE.BackSide, depthWrite:false }));
+boxFaces.position.set(0.5,0.5,0.5); scene.add(boxFaces);
+
+window.addEventListener('resize', size); size(); controls.update();
+
+let spheres=null, edges=null, cellMesh=null, curN=0;
+const sphGeo = new THREE.SphereGeometry(1,20,14);
+const sphMat = new THREE.MeshStandardMaterial({ roughness:.35, metalness:.18, envMapIntensity:1.0 });
+const faceMat = new THREE.MeshStandardMaterial({ vertexColors:true, transparent:true, opacity:0.17,
+  side:THREE.DoubleSide, depthWrite:false, roughness:.55, metalness:0, envMapIntensity:.4 });
+const _m = new THREE.Matrix4(), _c = new THREE.Color();
+
+function ensureMeshes(N){
+  if(N===curN && spheres) return;
+  if(spheres){ scene.remove(spheres); spheres.dispose(); }
+  spheres = new THREE.InstancedMesh(sphGeo, sphMat, N);
+  spheres.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(spheres);
+  curN = N;
+}
+
+// turbo-ish colormap value in [0,1]
+function cmap(t){ t=Math.max(0,Math.min(1,t));
+  const r=Math.max(0,Math.min(1, 1.5-Math.abs(4*t-3)));
+  const g=Math.max(0,Math.min(1, 1.5-Math.abs(4*t-2)));
+  const b=Math.max(0,Math.min(1, 1.5-Math.abs(4*t-1)));
+  return [r,g,b];
+}
+
+function render3D(cr, N, res){
+  ensureMeshes(N);
+  const N23 = Math.pow(N,2/3);
+  // per-cell observable for coloring
+  const colorby = document.getElementById('colorby').value;
+  const obs = new Float64Array(N);
+  for(let i=0;i<N;i++){
+    if(colorby==='vol') obs[i]=N*res.Vc[i];
+    else if(colorby==='energy') obs[i]=res.Sc? (curKV()*(N*res.Vc[i]-1)**2 + curKS()*(N23*res.Sc[i]-curS0())**2):0;
+    else obs[i]=N23*res.Sc[i];
+  }
+  let lo=Infinity,hi=-Infinity; for(const o of obs){ if(o<lo)lo=o; if(o>hi)hi=o; }
+  // one (sRGB-correct, linear) color per cell, shared by spheres and faces
+  const cols=[]; for(let i=0;i<N;i++){ const t=hi>lo?(obs[i]-lo)/(hi-lo):0.5; const c=cmap(t);
+    cols.push(new THREE.Color().setRGB(c[0],c[1],c[2], THREE.SRGBColorSpace)); }
+  const rad = 0.16/Math.cbrt(N);                    // sphere radius ~ fraction of spacing
+  for(let i=0;i<N;i++){
+    _m.makeScale(rad,rad,rad); _m.setPosition(cr[3*i],cr[3*i+1],cr[3*i+2]);
+    spheres.setMatrixAt(i,_m); spheres.setColorAt(i,cols[i]);
+  }
+  spheres.instanceMatrix.needsUpdate=true; if(spheres.instanceColor) spheres.instanceColor.needsUpdate=true;
+
+  // translucent Voronoi cell faces (fan-triangulated from each polygon's centroid)
+  if(cellMesh){ scene.remove(cellMesh); cellMesh.geometry.dispose(); cellMesh=null; }
+  if(document.getElementById('showfaces').checked && res.faces){
+    const pos=[], col=[];
+    for(const f of res.faces){ const v=f.verts, k=v.length; if(k<3) continue;
+      let cx=0,cy=0,cz=0; for(const p of v){cx+=p[0];cy+=p[1];cz+=p[2];} cx/=k;cy/=k;cz/=k;
+      const cc=cols[f.cell]||cols[0];
+      for(let m=0;m<k;m++){ const a=v[m], b=v[(m+1)%k];
+        pos.push(cx,cy,cz, a[0],a[1],a[2], b[0],b[1],b[2]);
+        col.push(cc.r,cc.g,cc.b, cc.r,cc.g,cc.b, cc.r,cc.g,cc.b); } }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col,3));
+    g.computeVertexNormals();
+    cellMesh=new THREE.Mesh(g, faceMat); cellMesh.renderOrder=1; scene.add(cellMesh);
+  }
+
+  // Voronoi edges from face polygons (fat lines)
+  if(edges){ scene.remove(edges); edges.geometry.dispose(); edges=null; }
+  if(document.getElementById('showedges').checked && res.faces){
+    const seg=[];
+    for(const f of res.faces){ const v=f.verts, k=v.length;
+      for(let m=0;m<k;m++){ const a=v[m], b=v[(m+1)%k]; seg.push(a[0],a[1],a[2], b[0],b[1],b[2]); } }
+    const g=new LineSegmentsGeometry(); g.setPositions(seg);
+    edges=new LineSegments2(g, edgeMat); edges.renderOrder=2; scene.add(edges);
+  }
+}
+
+renderer.setAnimationLoop(()=>{ controls.update(); renderer.render(scene,cam); });
+
+// ---------- UI state ----------
+const $=id=>document.getElementById(id);
+const curN_=()=>+$('N').value, curS0=()=>+$('s0').value, curKS=()=>+$('ks').value;
+const curKV=()=>Math.pow(10, +$('lkv').value);
+function syncLabels(){ $('Nv').textContent=$('N').value; $('s0v').textContent=(+$('s0').value).toFixed(2);
+  $('lkvv').textContent=curKV().toExponential(0); $('ksv').textContent=(+$('ks').value).toFixed(2); }
+['N','s0','lkv','ks'].forEach(id=>$(id).addEventListener('input',syncLabels)); syncLabels();
+
+let st=null, running=false, lastRes=null;
+function freshState(){ st=makeState(curN_(),curS0(),curKV(),curKS(),+$('seed').value,{maxSteps:4000,ftol:1e-7}); running=false; updateStats(0,null,'ready'); drawCurrent(); }
+function drawCurrent(){ const r=energyAndForce(st.cr, st.N, st.s0, st.kV, st.kS); lastRes=r; render3D(st.cr,st.N,r); updateStats(st.it,r,statusText(st.status)); }
+function statusText(s){ return s===1?'converged':s===2?'max steps':s===3?'diverged':s===0?'idle':String(s); }
+
+function updateStats(step,r,stat){
+  $('s_step').textContent=step;
+  if(r){ const N=st.N, N23=Math.pow(N,2/3);
+    let ms=0,m=0,vv=0; for(let i=0;i<N;i++){ms+=N23*r.Sc[i]; m+=N*r.Vc[i];} ms/=N; m/=N;
+    for(let i=0;i<N;i++) vv+=(N*r.Vc[i]-m)**2; const cov=Math.sqrt(vv/N)/m;
+    $('s_E').textContent=r.EperN.toExponential(3); $('s_F').textContent=r.maxF.toExponential(2);
+    $('s_s').textContent=ms.toFixed(4); $('s_cov').textContent=cov.toExponential(2);
+  }
+  $('s_stat').textContent=stat;
+  $('hud').innerHTML = r? `N=<b>${st.N}</b> &nbsp; s₀=<b>${st.s0.toFixed(2)}</b> &nbsp; kᵥ=<b>${st.kV.toExponential(0)}</b> &nbsp; k_S=<b>${st.kS.toFixed(2)}</b><br>step <b>${step}</b> &nbsp; E/N <b>${r.EperN.toExponential(3)}</b> &nbsp; max|F| <b>${r.maxF.toExponential(2)}</b>` : '';
+}
+
+function loop(){
+  if(!running) return;
+  for(let k=0;k<3 && !st.done;k++) fireStep(st);  // a few FIRE steps per frame
+  lastRes=st.last; render3D(st.cr,st.N,st.last); updateStats(st.it,st.last,statusText(st.status));
+  if(st.done){ running=false; $('run').textContent='Run'; return; }
+  requestAnimationFrame(loop);
+}
+
+$('rand').onclick=()=>{ $('seed').value=1+Math.floor(Math.random()*999); freshState(); };
+$('step').onclick=()=>{ if(st.done) return; fireStep(st); render3D(st.cr,st.N,st.last); updateStats(st.it,st.last,statusText(st.status)); };
+$('run').onclick=()=>{ if(running){running=false;$('run').textContent='Run';return;} if(st.done) freshState(); running=true; $('run').textContent='Pause'; requestAnimationFrame(loop); };
+$('conv').onclick=()=>{ running=false; $('run').textContent='Run'; const t0=performance.now();
+  while(!st.done && performance.now()-t0<8000) fireStep(st); render3D(st.cr,st.N,st.last); updateStats(st.it,st.last,statusText(st.status)); };
+$('colorby').onchange=()=>{ if(lastRes) render3D(st.cr,st.N,lastRes); };
+$('showedges').onchange=()=>{ if(lastRes) render3D(st.cr,st.N,lastRes); };
+$('showfaces').onchange=()=>{ if(lastRes) render3D(st.cr,st.N,lastRes); };
+// changing params makes a fresh state (so you relax the new system)
+['N','s0','lkv','ks','seed'].forEach(id=>$(id).addEventListener('change', freshState));
+
+// ---------- mode tabs ----------
+document.querySelectorAll('.tab').forEach(tab=>tab.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on')); tab.classList.add('on');
+  const m=tab.dataset.mode;
+  $('relaxctl').style.display = m==='relax'?'':'none';
+  $('transctl').style.display = m==='trans'?'':'none';
+});
+
+// ---------- transition explorer ----------
+let sweeping=false;
+$('stopsweep').onclick=()=>{ sweeping=false; };
+$('sweep').onclick=async ()=>{
+  if(sweeping) return; sweeping=true;
+  const N=curN_(), kV=curKV(), kS=curKS(), seed0=+$('seed').value;
+  const a=+$('s0a').value, b=+$('s0b').value, d=Math.max(0.01,+$('s0d').value), ns=Math.max(1,+$('nse').value);
+  const s0s=[]; for(let s=a;s<=b+1e-9;s+=d) s0s.push(+s.toFixed(3));
+  const dataE=[], dataS=[];
+  for(let qi=0; qi<s0s.length && sweeping; qi++){
+    const s0=s0s[qi]; let eN=0, sm=0; const N23=Math.pow(N,2/3);
+    for(let se=0; se<ns && sweeping; se++){
+      // chunked FIRE with yields so the UI/animation stays responsive
+      const stt=makeState(N,s0,kV,kS,seed0+se,{ftol:1e-6,maxSteps:1500});
+      while(!stt.done && sweeping){
+        for(let k=0;k<25 && !stt.done;k++) fireStep(stt);
+        render3D(stt.cr, stt.N, stt.last); st=stt;   // show the in-progress config
+        await new Promise(r=>setTimeout(r));
+      }
+      eN+=stt.last.EperN; let ms=0; for(let i=0;i<stt.N;i++) ms+=N23*stt.last.Sc[i]; sm+=ms/stt.N;
+    }
+    dataE.push([s0,eN/ns]); dataS.push([s0,sm/ns]);
+    $('prog').firstElementChild.style.width = (100*(qi+1)/s0s.length)+'%';
+    drawPlot(dataE,dataS);
+    await new Promise(r=>setTimeout(r,0));   // yield to UI
+  }
+  sweeping=false;
+};
+
+function drawPlot(dE,dS){
+  const cv=$('plot'), ctx=cv.getContext('2d'); const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#0e131b'; ctx.fillRect(0,0,W,H);
+  const pad=44, ph=(H-3*pad/2)/2;
+  const panels=[['⟨E/N⟩ vs s₀',dE,'#4da3ff'],['⟨shape index sᵢ⟩ vs s₀',dS,'#ffb454']];
+  panels.forEach((p,pi)=>{
+    const [title,data,col]=p; const y0=pad/2+pi*(ph+pad/2);
+    const xs=data.map(d=>d[0]), ys=data.map(d=>d[1]);
+    const xmin=Math.min(...xs,5.0), xmax=Math.max(...xs,5.8);
+    let ymin=Math.min(...ys), ymax=Math.max(...ys); if(!(ymax>ymin)){ymax=ymin+1;}
+    const X=x=>pad+(x-xmin)/(xmax-xmin)*(W-1.5*pad);
+    const Y=y=>y0+ph-(y-ymin)/(ymax-ymin)*ph;
+    ctx.strokeStyle='#2a3340'; ctx.strokeRect(pad,y0,W-1.5*pad,ph);
+    ctx.fillStyle='#8b97a8'; ctx.font='11px system-ui'; ctx.fillText(title,pad,y0-4);
+    ctx.fillText(ymax.toExponential(1),4,y0+9); ctx.fillText(ymin.toExponential(1),4,y0+ph);
+    ctx.fillText(xmin.toFixed(2),pad-8,y0+ph+14); ctx.fillText(xmax.toFixed(2),W-1.5*pad-6,y0+ph+14);
+    // transition marker
+    if(5.41>=xmin&&5.41<=xmax){ ctx.strokeStyle='#c0392b'; ctx.setLineDash([4,3]); ctx.beginPath();
+      ctx.moveTo(X(5.41),y0); ctx.lineTo(X(5.41),y0+ph); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle='#c0392b'; ctx.fillText('s₀*≈5.41',X(5.41)+3,y0+11); }
+    ctx.strokeStyle=col; ctx.fillStyle=col; ctx.beginPath();
+    data.forEach((dd,i)=>{ const x=X(dd[0]),y=Y(dd[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+    data.forEach(dd=>{ ctx.beginPath(); ctx.arc(X(dd[0]),Y(dd[1]),2.2,0,7); ctx.fill(); });
+  });
+}
+
+// ---------- about / references modal ----------
+{
+  const about=$('about');
+  $('aboutbtn').onclick=()=>about.classList.add('open');
+  $('aboutx').onclick=()=>about.classList.remove('open');
+  about.onclick=(e)=>{ if(e.target===about) about.classList.remove('open'); };
+  addEventListener('keydown', e=>{ if(e.key==='Escape') about.classList.remove('open'); });
+}
+
+// ---------- start ----------
+(async ()=>{
+  $('hud').innerHTML = 'loading voro++ (WebAssembly)…';
+  try { await initVoro(); }
+  catch(e){ $('hud').innerHTML = 'failed to load voro++ WASM: '+e.message; throw e; }
+  freshState();
+})();
+</script>
+</body>
+</html>
